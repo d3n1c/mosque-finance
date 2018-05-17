@@ -1,0 +1,274 @@
+<?php
+
+/*
+ * Copyright (C) 2018 denic
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
+
+/**
+ * Implementation of hook_load
+ * @return arg
+ **/
+function dnctinyaccounting_load($arg) {
+  return check_plain($arg);
+}
+
+/**
+ * Implemented hook_permission
+ * to handle user access stricly
+ *
+ * @return array
+ */
+function dnctinyaccounting_permission() {
+  return [
+    'view dnc tinyaccounting' => [
+      'title' => t('View DNC Tiny Accounting'),
+      'description' => t('Viewing DNC\'s System to handling tiny accounting')
+    ],
+    'administer dnc tinyaccounting' => [
+      'title' => t('Administer DNC Tiny Accounting'),
+      'description' => t('Administer DNC\'s System to handling tiny accounting')
+    ],
+    'use dnc tinyaccounting' => [
+      'title' => t('Use DNC Tiny Accounting'),
+      'description' => t('Use and manipulate data of DNC System to handling tiny accounting')
+    ],
+  ];
+}
+
+function dnctinyaccounting_structures_of_data($type = NULL) {
+  // types of data are text or integer or array or attachments or reference with content type information
+  // all ids are integer
+  $structures = [
+    'accounts' => [
+      'title' => ['type' => 'text', 'required' => TRUE],
+      'code' => ['type' => 'text'],
+      'description' => ['type' => 'text'],
+      'normal' => ['type' => 'int'], // 0 for debit, 1 for credit
+      'report_type' => ['type' => 'int'] // 0 for ballanced sheet, 1 for profit and lost
+    ],
+    'transactions' => [
+      'title' => ['type' => 'text', 'required' => TRUE],
+      'time' => ['type' => 'text', 'required' => TRUE],
+      'total' => ['type' => 'int', 'required' => TRUE],
+      'pic' => ['type' => 'text'],
+      'annotation' => ['type' => 'text']
+    ],
+    'journals' => [
+      'title' => ['type' => 'text', 'required' => TRUE],
+      'account' => ['type' => 'reference', 'reference' => 'accounts', 'required' => TRUE, 'widget' => 'autocomplete'],
+      'time' => ['type' => 'text', 'required' => TRUE],
+      'transaction' => ['type' => 'reference', 'reference' => 'transactions', 'required' => TRUE, 'widget' => 'autocomplete'],
+      'action' => ['type' => 'int', 'required' => TRUE, 'widget' => 'radios'],
+      'worth' => ['type' => 'int', 'required' => TRUE],
+    ],
+  ];
+  return empty($type) ? $structures : (empty($structures[$type]) ? NULL : $structures[$type]);
+}
+
+function dnctinyaccounting_listing_view($type = NULL) {
+  $structures = [
+    'accounts' => ['title', 'code', 'description', 'report_type', 'normal'],
+    'transactions' => ['title', 'time', 'total'],
+    'journals' => ['title', 'account', 'time', 'transaction', 'action', 'worth'],
+  ];
+
+  return empty($type) ? $structures : (empty($structures[$type]) ? NULL : $structures[$type]);
+}
+
+/**
+ * Implementation of hook_menu
+ *
+ * @return array
+ */
+function dnctinyaccounting_menu() {
+  $items = [];
+
+  module_load_include('inc', 'dnctinyaccounting', 'dnctinyaccounting.admin');
+  dnctinyaccounting_admin_menu($items);
+  module_load_include('inc', 'dnctinyaccounting', 'dnctinyaccounting.reference');
+  dnctinyaccounting_reference_menu($items);
+//  module_load_include('inc', 'dncaccounting', 'dncaccounting.transaction');
+//  dncaccounting_transaction_menu($items);
+//  module_load_include('inc', 'dncaccounting', 'dncaccounting.report');
+//  dncaccounting_report_menu($items);
+//  module_load_include('inc', 'dncaccounting', 'dncaccounting.stock');
+//  dncaccounting_stock_menu($items);
+  $items['dnctinyaccounting/search-autocomplete/%dnctinyaccounting'] = [
+    'title' => 'Searching for Autocomplete',
+    'page callback' => 'dnctinyaccounting_search_for_autocomplete',
+    'access arguments' => ['use dnc tinyaccounting'],  //or whatever permission makes sense
+    'page arguments' => [2],
+    'type' => MENU_CALLBACK,
+  ];
+
+  return $items;
+}
+
+function dnctinyaccounting_type_of_reports($code = NULL) {
+  $return = [
+    t('Balance Sheet'),
+    t('Profit and Lost')
+  ];
+  return is_null($code) ? $return : (empty($return[$code]) ? NULL : $return[$code]);
+}
+
+function dnctinyaccounting_search_for_autocomplete($type, $string) {
+  $matches = [];
+  $result = dncfilewrapper_get_listing($type, [
+    'type' => 'string',
+    'string' => $string
+  ], [0, 10]);
+//  watchdog('search', '<pre>@print</pre>', array('@print' => print_r($result, TRUE)));
+  
+  if (!empty($result)) {
+    foreach ($result as $keys => $values) {
+      $title = $values['title'] . (empty($values['description']) ? NULL : '; ' . $values['description']);
+      $matches[$title . ' | ' . $values['nid']] = $title;
+      unset ($title);
+    }
+  }
+  drupal_json_output($matches);
+}
+
+function dnctinyaccounting_save_transactions(array $data = []) {
+  if (empty($data)) {
+    return;
+  }
+  $structure = dnctinyaccounting_structures_of_data('transactions');
+  $datas = [];
+  foreach ($data as $keys => $values) {
+    foreach ($structure as $key => $value) {
+      if (isset($values[$key])) {
+        $datas[$keys][$key] = $values[$key];
+      }
+      else {
+        if (!empty($value['required'])) {
+          unset ($datas[$keys]);
+          break;
+        }
+      }
+    }
+  }
+  unset ($structure);
+  if (empty($datas)) {
+    unset ($datas);
+    return;
+  }
+  $result = dncfilewrapper_update_data($GLOBALS['user']->uid, ['transactions' => $datas]);
+  unset ($datas);
+  if (empty($result['transactions'])) {
+    unset ($result);
+    return;
+  }
+  return $result['transactions'];
+}
+
+function dnctinyaccounting_save_journals(array $data = []) {
+  if (empty($data)) {
+    return;
+  }
+  $structure = dnctinyaccounting_structures_of_data('journals');
+  $datas = [];
+  foreach ($data as $keys => $values) {
+    foreach ($structure as $key => $value) {
+      if (isset($values[$key])) {
+        $datas[$keys][$key] = $values[$key];
+      }
+      else {
+        if (!empty($value['required'])) {
+          unset ($datas[$keys]);
+          break;
+        }
+      }
+    }
+  }
+  unset ($structure);
+  if (empty($datas)) {
+    unset ($datas);
+    return;
+  }
+  $result = dncfilewrapper_update_data($GLOBALS['user']->uid, ['journals' => $datas]);
+  unset ($datas);
+  if (empty($result['journals'])) {
+    unset ($result);
+    return;
+  }
+  return $result['journals'];
+}
+
+//function dnctinyaccounting_save_transaction_old(array $data = []) {
+//  if (empty($data['journals'])) {
+//    return;
+//  }
+//  
+//  // check journal balanced
+//  $total = [0, 0];
+//  foreach ($data['journals'] as $keys => $values) {
+//    if (empty($values['account']) || !isset($values['action']) || empty($values['worth'])) {
+//      continue;
+//    }
+//    $total[$values['action']] += $values['worth'];
+//  }
+//  if (empty($total[0]) || empty($total[1]) || $total[0] !== $total[1] || $total[0] !== $data['worth']) {
+//    unset ($total);
+//    return;
+//  }
+//  unset ($total);
+//  
+//  // save transaction
+//  $structure = dnctinyaccounting_structures_of_data('transactions');
+//  $tdata = [];
+//  foreach ($structure as $keys => $values) {
+//    if (!empty($values['required']) && empty($data[$keys])) {
+//      $tdata = [];
+//      break;
+//    }
+//    $tdata[$keys] = $values;
+//  }
+//  unset ($structure);
+//  if (empty($tdata)) {
+//    unset ($tdata);
+//    return;
+//  }
+//  
+//  $result = dncfilewrapper_update_data($GLOBALS['user']->uid, ['transactions' => [$tdata]]);
+//  if (empty($result['transaction'][0]['nid'])) {
+//    unset ($result, $tdata);
+//    return;
+//  }
+//  $tdata = $result['transaction'][0];
+//  unset ($result);
+//  $return = $tdata;
+//  
+//  // save journals
+//  $jdata = [];
+//  foreach ($data['journals'] as $keys => $values) {
+//    $account = dncfilewrapper_get_data('accounts', $values['account']);
+//    $values['title'] = empty($account['title']) ? NULL : $account['title'];
+//    $values['time'] = $tdata['time'];
+//    $values['transaction'] = $tdata['nid'];
+//    $jdata[] = $values;
+//    unset ($account);
+//  }
+//  unset ($tdata);
+//  $result = dncfilewrapper_update_data($GLOBALS['user']->uid, ['journals' => $jdata]);
+//  unset ($jdata);
+//  $return['journals'] = $result['journals'];
+//  unset ($result);
+//  
+//  return $return;
+//}

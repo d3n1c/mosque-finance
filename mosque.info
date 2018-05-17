@@ -1,0 +1,62 @@
+name = Mosque Finance
+description = Installation profile for DNC's System to manage mosque finance management
+version = "7.x-1.0-dev"
+core = 7.x
+php = 5.6
+
+; The distribution_name property is used in the installer and other places as
+; a label for the software being installed.
+distribution_name = mosque
+
+; The exclusive flag auto-selects the profile during installation, if there
+; are no other exclusive ones.
+exclusive = TRUE
+
+; Required modules (Core)
+; Copy/pasted from standard.info
+dependencies[] = block
+dependencies[] = color
+dependencies[] = comment
+dependencies[] = contextual
+dependencies[] = dblog
+dependencies[] = field
+dependencies[] = field_ui
+dependencies[] = file
+dependencies[] = filter
+dependencies[] = help
+dependencies[] = image
+dependencies[] = list
+dependencies[] = locale
+dependencies[] = menu
+dependencies[] = node
+dependencies[] = number
+dependencies[] = options
+dependencies[] = path
+dependencies[] = rdf
+dependencies[] = search
+dependencies[] = shortcut
+dependencies[] = taxonomy
+dependencies[] = system
+dependencies[] = text
+dependencies[] = user
+
+; Required modules (Contrib)
+dependencies[] = ctools
+dependencies[] = date_api
+dependencies[] = date_popup
+dependencies[] = entity
+dependencies[] = hide_submit
+dependencies[] = jquery_update
+dependencies[] = l10n_client
+dependencies[] = libraries
+dependencies[] = module_filter
+dependencies[] = navbar
+dependencies[] = fancy_login
+; dependencies[] = pwa
+
+; My Customs (custom)
+dependencies[] = dncsystem
+; dependencies[] = dnccoreui_assist
+dependencies[] = dncfilewrapper
+dependencies[] = dnctinyaccounting
+dependencies[] = mosquefinance

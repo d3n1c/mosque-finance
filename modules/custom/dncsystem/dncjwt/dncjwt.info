@@ -1,0 +1,5 @@
+name = "DNC JWT"
+description = "DNC's system tools to handle JSON Web Token (JWT)"
+core = 7.x
+package = DNC System
+dependencies[] = dncsystem

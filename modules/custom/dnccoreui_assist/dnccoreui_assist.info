@@ -1,0 +1,4 @@
+name = "DNC Core UI Assistance"
+description = "DNC\'s CoreUI theme assistance"
+core = 7.x
+package = DNC System

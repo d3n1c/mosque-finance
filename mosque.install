@@ -1,0 +1,757 @@
+<?php
+/**
+ * @file
+ * Install, update and un-install functions for the account install profile.
+ */
+
+function mosque_install_tasks($install_state) {
+  $tasks['mosque_configuration'] = [
+    'display_name' => st('Mosque finance configurations'),
+    'display' => TRUE,
+    'type' => 'batch',
+    'run' => INSTALL_TASK_RUN_IF_NOT_COMPLETED,
+    'function' => 'mosque_cblocks_creation',
+  ];
+  return $tasks;
+}
+
+function mosque_cblocks_creation() {
+  global $install_state;
+  $batch = ['title' => st('Mosque finance configurations')];
+  $batch['operations'][] = ['mosque_granting_role_permission', []];
+  $batch['operations'][] = ['mosque_prepare_storages', []];
+  $batch['operations'][] = ['mosque_set_main_menu_links', []];
+  $batch['operations'][] = ['mosque_set_blocks', []];
+  $batch['operations'][] = ['mosque_extra_info_blocks', []];
+  $batch['operations'][] = ['mosque_set_default_scenarios', []];
+  return $batch;
+}
+
+/**
+ * Implements hook_install().
+ *
+ * Perform actions to set up the site for this profile.
+ *
+ * @see system_install()
+ */
+function mosque_install() {
+  // login
+  
+  theme_enable(['dnccoreui']);
+  variable_set('theme_default', 'dnccoreui');
+
+  // Add text formats.
+  $filtered_html_format = [
+    'format' => 'filtered_html',
+    'name' => 'Filtered HTML',
+    'weight' => 0,
+    'filters' => [
+      // HTML filter.
+      'filter_html' => [
+        'weight' => 1,
+        'status' => 1,
+        'settings' => [
+          'allowed_html' => '<a> <em> <strong> <cite> <blockquote> <code> <ul> <ol> <li> <dl> <dt> <dd> <br> <p> <img> <pre>',
+        ],
+      ],
+      // Caption filter.
+      'caption' => [
+        'weight' => 5,
+        'status' => 1,
+      ],
+      // HTML corrector filter.
+      'filter_htmlcorrector' => [
+        'weight' => 10,
+        'status' => 1,
+      ],
+    ],
+  ];
+  $filtered_html_format = (object) $filtered_html_format;
+  filter_format_save($filtered_html_format);
+
+  $full_html_format = [
+    'format' => 'full_html',
+    'name' => 'Full HTML',
+    'weight' => 1,
+    'filters' => [
+      // Caption filter.
+      'caption' => [
+        'weight' => 5,
+        'status' => 1,
+      ],
+      // HTML corrector filter.
+      'filter_htmlcorrector' => [
+        'weight' => 10,
+        'status' => 1,
+      ],
+    ],
+  ];
+  $full_html_format = (object) $full_html_format;
+  filter_format_save($full_html_format);
+
+  // Enable some standard blocks.
+  $default_theme = variable_get('theme_default', 'bartik');
+  $admin_theme = 'seven';
+  $blocks = [
+    [
+      'module' => 'system',
+      'delta' => 'main',
+      'theme' => $default_theme,
+      'status' => 1,
+      'weight' => 0,
+      'region' => 'content',
+      'pages' => '',
+      'cache' => -1,
+    ],
+    [
+      'module' => 'system',
+      'delta' => 'main_menu',
+      'theme' => $default_theme,
+      'status' => 1,
+      'weight' => 0,
+      'region' => 'sidebar_first',
+      'pages' => '',
+      'cache' => -1,
+    ],
+    [
+      'module' => 'system',
+      'delta' => 'powered-by',
+      'theme' => $default_theme,
+      'status' => 1,
+      'weight' => 10,
+      'region' => 'footer',
+      'pages' => '',
+      'cache' => -1,
+    ],
+    [
+      'module' => 'system',
+      'delta' => 'help',
+      'theme' => $default_theme,
+      'status' => 1,
+      'weight' => 0,
+      'region' => 'help',
+      'pages' => '',
+      'cache' => -1,
+    ],
+    [
+      'module' => 'system',
+      'delta' => 'main',
+      'theme' => $admin_theme,
+      'status' => 1,
+      'weight' => 0,
+      'region' => 'content',
+      'pages' => '',
+      'cache' => -1,
+    ],
+  ];
+  $query = db_insert('block')->fields(['module', 'delta', 'theme', 'status', 'weight', 'region', 'pages', 'cache']);
+  foreach ($blocks as $block) {
+    $query->values($block);
+  }
+  $query->execute();
+
+  // Insert default pre-defined node types into the database. For a complete
+  // list of available node type attributes, refer to the node type API
+  // documentation at: http://api.drupal.org/api/HEAD/function/hook_node_info.
+  $types = [
+    [
+      'type' => 'page',
+      'name' => st('Basic page'),
+      'base' => 'node_content',
+      'description' => st("Use <em>basic pages</em> for your static content, such as an 'About us' page."),
+      'custom' => 1,
+      'modified' => 1,
+      'locked' => 0,
+    ],
+    [
+      'type' => 'article',
+      'name' => st('Article'),
+      'base' => 'node_content',
+      'description' => st('Use <em>articles</em> for time-sensitive content like news, press releases or blog posts.'),
+      'custom' => 1,
+      'modified' => 1,
+      'locked' => 0,
+    ]
+  ];
+
+  foreach ($types as $type) {
+    $type = node_type_set_defaults($type);
+    node_type_save($type);
+    node_add_body_field($type);
+  }
+
+  // Insert default pre-defined RDF mapping into the database.
+  $rdf_mappings = [
+    [
+      'type' => 'node',
+      'bundle' => 'page',
+      'mapping' => [
+        'rdftype' => ['foaf:Document'],
+      ],
+    ],
+    [
+      'type' => 'node',
+      'bundle' => 'article',
+      'mapping' => [
+        'field_image' => [
+          'predicates' => ['og:image', 'rdfs:seeAlso'],
+          'type' => 'rel',
+        ],
+        'field_tags' => [
+          'predicates' => ['dc:subject'],
+          'type' => 'rel',
+        ]
+      ]
+    ]
+  ];
+  foreach ($rdf_mappings as $rdf_mapping) {
+    rdf_mapping_save($rdf_mapping);
+  }
+
+  // Default "Basic page" to not be promoted and have comments disabled.
+  variable_set('node_options_page', ['status']);
+  variable_set('comment_page', COMMENT_NODE_HIDDEN);
+
+  // Don't display date and author information for "Basic page" nodes by default.
+  variable_set('node_submitted_page', FALSE);
+
+  // Enable user picture support and set the default to a square thumbnail option.
+  variable_set('user_pictures', '1');
+  variable_set('user_picture_dimensions', '1024x1024');
+  variable_set('user_picture_file_size', '800');
+  variable_set('user_picture_style', 'thumbnail');
+
+  // Allow visitor account creation with administrative approval.
+  variable_set('user_register', USER_REGISTER_VISITORS_ADMINISTRATIVE_APPROVAL);
+
+  // Create a default vocabulary named "Tags", enabled for the 'article' content type.
+  $description = st('Use tags to group articles on similar topics into categories.');
+  $help = st('Enter a comma-separated list of words to describe your content.');
+  $vocabulary = (object) [
+    'name' => st('Tags'),
+    'description' => $description,
+    'machine_name' => 'tags',
+    'help' => $help
+  ];
+  taxonomy_vocabulary_save($vocabulary);
+
+  $field = [
+    'field_name' => 'field_' . $vocabulary->machine_name,
+    'type' => 'taxonomy_term_reference',
+    // Set cardinality to unlimited for tagging.
+    'cardinality' => FIELD_CARDINALITY_UNLIMITED,
+    'settings' => [
+      'allowed_values' => [
+        [
+          'vocabulary' => $vocabulary->machine_name,
+          'parent' => 0,
+        ]
+      ]
+    ]
+  ];
+  field_create_field($field);
+
+  $instance = [
+    'field_name' => 'field_' . $vocabulary->machine_name,
+    'entity_type' => 'node',
+    'label' => 'Tags',
+    'bundle' => 'article',
+    'description' => $vocabulary->help,
+    'widget' => [
+      'type' => 'taxonomy_autocomplete',
+      'weight' => -4,
+    ],
+    'display' => [
+      'default' => [
+        'type' => 'taxonomy_term_reference_link',
+        'weight' => 10,
+      ],
+      'teaser' => [
+        'type' => 'taxonomy_term_reference_link',
+        'weight' => 10,
+      ]
+    ]
+  ];
+  field_create_instance($instance);
+
+
+  // Create an image field named "Image", enabled for the 'article' content type.
+  // Many of the following values will be defaulted, they're included here as an illustrative examples.
+  // See http://api.drupal.org/api/function/field_create_field/7
+
+  $field = [
+    'field_name' => 'field_image',
+    'type' => 'image',
+    'cardinality' => 1,
+    'locked' => FALSE,
+    'indexes' => ['fid' => ['fid']],
+    'settings' => [
+      'uri_scheme' => 'public',
+      'default_image' => FALSE,
+    ],
+    'storage' => [
+      'type' => 'field_sql_storage',
+      'settings' => [],
+    ]
+  ];
+  field_create_field($field);
+
+
+  // Many of the following values will be defaulted, they're included here as an illustrative examples.
+  // See http://api.drupal.org/api/function/field_create_instance/7
+  $instance = [
+    'field_name' => 'field_image',
+    'entity_type' => 'node',
+    'label' => 'Image',
+    'bundle' => 'article',
+    'description' => st('Upload an image to go with this article.'),
+    'required' => FALSE,
+
+    'settings' => [
+      'file_directory' => 'field/image',
+      'file_extensions' => 'png gif jpg jpeg',
+      'max_filesize' => '',
+      'max_resolution' => '',
+      'min_resolution' => '',
+      'alt_field' => TRUE,
+      'title_field' => '',
+    ],
+
+    'widget' => [
+      'type' => 'image_image',
+      'settings' => [
+        'progress_indicator' => 'throbber',
+        'preview_image_style' => 'thumbnail',
+      ],
+      'weight' => -1,
+    ],
+
+    'display' => [
+      'default' => [
+        'label' => 'hidden',
+        'type' => 'image',
+        'settings' => ['image_style' => 'large', 'image_link' => ''],
+        'weight' => -1,
+      ],
+      'teaser' => [
+        'label' => 'hidden',
+        'type' => 'image',
+        'settings' => ['image_style' => 'medium', 'image_link' => 'content'],
+        'weight' => -1,
+      ]
+    ]
+  ];
+  field_create_instance($instance);
+
+  // Enable default permissions for system roles.
+  $filtered_html_permission = filter_permission_name($filtered_html_format);
+  user_role_grant_permissions(DRUPAL_ANONYMOUS_RID, ['access content', 'access comments', $filtered_html_permission]);
+  user_role_grant_permissions(DRUPAL_AUTHENTICATED_RID, ['access content', 'access comments', 'post comments', 'skip comment approval', $filtered_html_permission]);
+
+  // Create a default role for site administrators, with all available permissions assigned.
+  $admin_role = new stdClass();
+  $admin_role->name = 'administrator';
+  $admin_role->weight = 2;
+  user_role_save($admin_role);
+  user_role_grant_permissions($admin_role->rid, array_keys(module_invoke_all('permission')));
+  // Set this as the administrator role.
+  variable_set('user_admin_role', $admin_role->rid);
+
+  // Assign user 1 the "administrator" role.
+  db_insert('users_roles')
+    ->fields(['uid' => 1, 'rid' => $admin_role->rid])
+    ->execute();
+
+  // Create a default role for site administrators, with all available permissions assigned.
+  $operator_role = new stdClass();
+  $operator_role->name = 'accountant';
+  $operator_role->weight = 10;
+  user_role_save($operator_role);
+  $permissions = ['administer mosque finance', 'view mosque finance', 'use mosque finance', 'view dnc tinyaccounting', 'administer dnc tinyaccounting', 'use dnc tinyaccounting'];
+  user_role_grant_permissions($operator_role->rid, $permissions);
+  unset ($permissions);
+  
+  // create user and login
+  $account = user_load(1);
+  $merge_data = [
+    'init' => 'root@example.org',
+    'roles' => !empty($account->roles) ? $account->roles : [],
+    'status' => 1,
+    'timezone' => 'Asia/Makassar'
+  ];
+  $valaccount = [
+    'name' => 'root',
+    'mail' => 'root@example.org',
+    'pass' => 'root',
+  ];
+  user_save($account, array_merge($valaccount, $merge_data));
+  
+  // create user admin
+  $account = user_load(2);
+  $userdata = [
+    'init' => 'bendahara@example.org',
+    'roles' => [
+      DRUPAL_AUTHENTICATED_RID => 'authenticated user',
+      $operator_role->rid => $operator_role->name,
+    ],
+    'status' => 1,
+    'timezone' => 'Asia/Makassar',
+    'name' => 'bendahara',
+    'mail' => 'bendahara@example.org',
+    'pass' => 'bendahara',
+  ];
+  user_save($account, $userdata);
+  
+  // create user asistent
+  $account = user_load(3);
+  $userdata = [
+    'init' => 'asisten@example.org',
+    'roles' => [
+      DRUPAL_AUTHENTICATED_RID => 'authenticated user',
+    ],
+    'status' => 1,
+    'timezone' => 'Asia/Makassar',
+    'name' => 'asisten',
+    'mail' => 'asisten@example.org',
+    'pass' => 'asisten',
+  ];
+  user_save($account, $userdata);
+  unset ($userdata, $account, $valaccount, $merge_data, $operator_role, $permissions);
+  
+  // Create a Home link in the main menu.
+//  $item = [
+//    'link_title' => st('Home'),
+//    'link_path' => '<front>',
+//    'menu_name' => 'main-menu',
+//  ];
+//  menu_link_save($item);
+
+  // Update the menu router information.
+  menu_rebuild();
+
+  // Enable the admin theme and responsive Bartik theme.
+  db_update('system')
+    ->fields(['status' => 1])
+    ->condition('type', 'theme')
+    ->condition('name', 'ember')
+    ->execute();
+  variable_set('admin_theme', 'seven');
+  variable_set('node_admin_theme', '1');
+  variable_set('theme_default', 'dnccoreui');
+
+  // Set the jQuery version to 1.7.
+  variable_set('jquery_update_compression_type', 'min');
+  variable_set('jquery_update_jquery_cdn', 'none');
+  variable_set('jquery_update_jquery_version', '1.12');
+
+  // site configurations
+  $nomenclatures = mosque_nomenclatures();
+  variable_set('site_name', $nomenclatures['site_name']);
+  variable_set('site_mail', $nomenclatures['site_mail']);
+  variable_set('date_default_time_zone', $nomenclatures['date_default_time_zone']);
+  variable_set('site_default_country', $nomenclatures['site_default_country']);
+  variable_set('clean_url', $nomenclatures['clean_url']);
+  variable_set('install_time', $nomenclatures['install_time']);
+  unset ($nomenclatures);
+}
+
+/**
+ * Recursively copy files from one directory to another
+ * 
+ * @param String $src - Source of files being moved
+ * @param String $dest - Destination of files being moved
+ */
+function mosque_copy_folder($src, $dest) {
+  // If source is not a directory stop processing
+  if(!is_dir($src)) return false;
+
+  // If the destination directory does not exist create it
+  if(!is_dir($dest)) { 
+    if(!mkdir($dest)) {
+      // If the destination directory could not be created stop processing
+      return false;
+    }    
+  }
+
+  // Open the source directory to read in files
+  $i = new DirectoryIterator($src);
+  foreach($i as $f) {
+    if($f->isFile()) {
+      copy($f->getRealPath(), "$dest/" . $f->getFilename());
+    } else if(!$f->isDot() && $f->isDir()) {
+      mosque_copy_folder($f->getRealPath(), "$dest/$f");
+    }
+  }
+}
+
+function mosque_granting_role_permission() {
+  // assign permission to role
+  $perm = ['view mosque finance', 'use mosque finance', 'view dnc tinyaccounting', 'use dnc tinyaccounting'];
+  $role = user_role_load_by_name('authenticated user');
+  user_role_grant_permissions($role->rid, $perm);
+  unset ($perm, $role);
+}
+
+function mosque_prepare_storages() {
+  $strmainpath = 'public://mosque-storages';
+  $strmainpath = drupal_realpath($strmainpath);
+  variable_set('dncfilewrapper_configs', ['main_path' => $strmainpath]);
+  $sourcepath = drupal_get_path('profile', 'mosque') . '/supports/files/mosque_storages';
+  $sourcepath = drupal_realpath($sourcepath);
+  mosque_copy_folder($sourcepath, $strmainpath);
+  unset ($strmainpath, $sourcepath);
+}
+
+function mosque_set_default_scenarios() {
+  $aconfigs = [];
+  $aconfigs['accounts']['cash'] = 1;
+  $aconfigs['accounts']['debt'] = 5;
+  $aconfigs['accounts']['account_receivable'] = 4;
+  $aconfigs['accounts']['cost'] = 3;
+  $aconfigs['accounts']['capital'] = 2;
+  $aconfigs['hijr_adjustment'] = 0;
+  variable_set('mosquefinance_configs', $aconfigs);
+  unset ($aconfigs);
+  
+  // disable some theme settings
+  $themsettings = variable_get('theme_dnccoreui_settings', array());
+  $themsettings['toggle_main_menu'] = 0;
+  $themsettings['toggle_secondary_menu'] = 0;
+  $themsettings['bootstrap_cdn_provider'] = 'custom';
+  $themsettings['bootstrap_cdn_custom_css'] = base_path() . 'profiles/mosque/libraries/bootstrap/dist/css/bootstrap.css';
+  $themsettings['bootstrap_cdn_custom_css_min'] = base_path() . 'profiles/mosque/libraries/bootstrap/dist/css/bootstrap.min.css';
+  $themsettings['bootstrap_cdn_custom_js'] = base_path() . 'profiles/mosque/libraries/bootstrap/dist/js/bootstrap.js';
+  $themsettings['bootstrap_cdn_custom_js_min'] = base_path() . 'profiles/mosque/libraries/bootstrap/dist/js/bootstrap.min.js';
+  variable_set('theme_dnccoreui_settings', $themsettings);
+  unset ($themsettings);
+}
+
+function mosque_set_main_menu_links(&$context) {
+  // disable home menu link item
+//  $mlid = db_select('menu_links', 'm')
+//      ->fields('m')
+//      ->condition('menu_name', 'main-menu')
+//      ->condition('link_path', '<front>')
+//      ->condition('link_title', 'Home')
+//      ->execute();
+//  $mlid = $mlid->fetchAssoc();
+//  $mlid = $mlid['mlid'];
+//  $item = menu_link_load($mlid);
+//  unset ($mlid);
+//  $item['hidden'] = 1;
+//  menu_link_save($item);
+//  unset ($item);
+  
+  // disable logout menu link item
+  $mlid = db_select('menu_links', 'm')
+      ->fields('m')
+      ->condition('menu_name', 'user-menu')
+      ->condition('link_path', 'user/logout')
+      ->condition('link_title', 'Log out')
+      ->execute();
+  $mlid = $mlid->fetchAssoc();
+  $mlid = $mlid['mlid'];
+  $item = menu_link_load($mlid);
+  unset ($mlid);
+  $item['hidden'] = 1;
+  menu_link_save($item);
+  unset ($item);
+  
+  $menus = mosque_prepare_main_menus();
+  $parents = [];
+  foreach ($menus['parent'] as $keys => $values) {
+    $parents[$keys] = menu_link_save($values);
+  }
+  
+  foreach ($menus['children'] as $keys => $values) {
+    if (!empty($parents[$values['parent']])) {
+      $values['plid'] = $parents[$values['parent']];
+      unset ($values['parent']);
+      $item = $values;
+      menu_link_save($item);
+      unset ($item);
+    }
+  }
+  unset ($menus, $parents);
+  
+  menu_cache_clear_all();
+  
+  //activate the main menu as sidebar's block
+  $default_theme = variable_get('theme_default', 'bartik');
+  $menus_in_block = ['main-menu', 'user-menu'];
+  
+  foreach ($menus_in_block as $keys => $values) {
+    $record = new stdClass();
+    $record->module = 'system';
+    $record->delta = $values;
+    $record->theme = $default_theme;
+    $record->status = 1;
+    $record->weight = $keys + 1;
+    $record->region = 'sidebar_first';
+    $record->custom = 0;
+    $record->visibility = 0;
+    $record->pages = '';
+    $record->title = '';
+    $record->cache = '-1';
+
+    $check = db_select('block', 'b')
+            ->fields('b')
+            ->condition('module', $record->module)
+            ->condition('delta', $record->delta)
+            ->condition('theme', $record->theme)
+            ->execute();
+    $check = $check->fetchAssoc();
+    if (!empty($check)) {
+      $record->bid = $check['bid'];
+      drupal_write_record('block', $record, 'bid');
+    }
+    else {
+      drupal_write_record('block', $record);
+    }
+    unset ($check, $record);
+
+    // set block role
+    if ($values == 'user-menu') {
+      $record = new stdClass();
+      $record->module = 'system';
+      $record->delta = $values;
+      $record->rid = 2;
+      drupal_write_record('block_role', $record);
+    }
+    unset ($check, $record);
+  }
+  unset ($default_theme, $menus_in_block);
+  $context['message'] = st('Menu rebuild and set to the right block');
+}
+
+function mosque_create_custom_block($bid, $description = '', array $body = array(), array $regions = array(), $visibility = 0, $pages = NULL, $title = '')
+ {
+  $delta = db_insert('block_custom')
+          ->fields(array(
+            'body' => $body['value'],
+            'info' => $description,
+            'format' => $body['format'],
+          ))
+          ->execute();
+  $query = db_insert('block')->fields(array(
+    'visibility', 'pages', 'custom', 'title', 'module',
+    'theme', 'status', 'weight', 'delta', 'cache', 'region'
+  ));
+  $i = 0;
+  foreach (list_themes() as $keys => $theme) {
+    $query->values(array(
+      'visibility' => (int)$visibility,
+      'pages' => empty($pages) ? '' : trim($pages),
+      'custom' => 0,
+      'title' => $title,
+      'module' => 'block',
+      'theme' => $theme->name,
+      'status' => empty($regions[$theme->name]) ? 0 : 1,
+      'weight' => empty($regions[$theme->name]) ? 0 : 15,
+      'delta' => $delta,
+      'cache' => DRUPAL_NO_CACHE,
+      'region' => empty($regions[$theme->name]) ? '-1' : $regions[$theme->name],
+    ));
+  }
+  $query->execute();
+}
+
+function mosque_extra_info_blocks(&$context) {
+  // 1 Configuration Menu
+  $default_theme = variable_get('theme_default', 'bartik');
+  mosque_create_custom_block(
+    1, 'Logout Toggle',
+    array(
+      'value' => '<a href="' . base_path() . 'user/logout">Sign-out</a>',
+      'format' => 'full_html'
+    ),
+    array(
+      $default_theme => 'navigation'
+    )
+  );
+  
+  $record = new stdClass();
+  $record->module = 'block';
+  $record->delta = 1;
+  $record->rid = 2;
+  drupal_write_record('block_role', $record);
+  
+  cache_clear_all();
+  unset ($default_theme);
+  $context['message'] = st('Creating logout link block');
+}
+
+function mosque_set_blocks(&$context) {
+  // create widget factory preset
+  $widgets = mosque_resources();
+  
+  // set enable widget block
+  $default_theme = variable_get('theme_default', 'dnccoreui');
+  foreach ($widgets as $widget) {
+    foreach (list_themes() as $theme) {
+      $record = new stdClass();
+      $record->module = 'fancy_login';
+      $record->delta = $widget['name'];
+      $record->theme = $theme->name;
+      $record->status = 0;
+      $record->weight = 0;
+      $record->region = '-1';
+      $record->custom = 0;
+      $record->visibility = 0;
+      $record->pages = '';
+      $record->title = '<none>';
+      $record->cache = '-1';
+      if ($theme->name == $default_theme) {
+        $record->status = 1;
+        $record->region = $widget['region'];
+        $record->weight = $widget['weight'];
+        $record->visibility = empty($widget['visibility']) ? 0 : $widget['visibility'];
+      }
+      $check = db_select('block', 'b')
+              ->fields('b')
+              ->condition('module', 'fancy_login')
+              ->condition('delta', $widget['name'])
+              ->condition('theme', $theme->name)
+              ->execute();
+      $check = $check->fetchAssoc();
+      if (!empty($check)) {
+        $record->bid = $check['bid'];
+        drupal_write_record('block', $record, 'bid');
+      }
+      else {
+        drupal_write_record('block', $record);
+      }
+      unset ($record, $check);
+    }
+    unset ($theme);
+  }
+  unset ($widgets, $default_theme, $widget);
+  
+  // disable search blocks
+  $sql = db_update('block')
+  ->fields(array(
+    'status' => 0,
+    'weight' => 0,
+    'region' => '-1',
+  ));
+  $or = db_or()
+          ->condition('module', 'search')
+          ->condition(
+              db_and()
+                ->condition('module', 'user')
+                ->condition('delta', 'login')
+            )
+          ->condition(
+              db_and()
+                ->condition('module', 'system')
+                ->condition('delta', 'navigation')
+                ->condition('theme', 'dnccoreui')
+            );
+  $sql->condition($or);
+  $sql = $sql->execute();
+  
+  cache_clear_all();
+  $context['message'] = st('Set default blocks');
+  variable_set('fancy_login_login_block_default_text', 'Sign-in');
+}
+

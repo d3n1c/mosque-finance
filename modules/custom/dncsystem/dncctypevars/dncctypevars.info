@@ -1,0 +1,10 @@
+name = "DNC Content Type Variables"
+description = "DNC's system for handling content type variables in the system"
+core = 7.x
+package = DNC System
+files[] = dncctypevars.admin.inc
+dependencies[] = entity
+dependencies[] = dncsystem
+dependencies[] = ctools
+dependencies[] = email
+;configure = admin/config/system/dncctypevars

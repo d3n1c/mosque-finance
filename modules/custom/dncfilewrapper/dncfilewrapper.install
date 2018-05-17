@@ -1,0 +1,41 @@
+<?php
+
+/* 
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+function dncfilewrapper_requirements($phase) {
+  $requirements = array();
+  $t = get_t();
+  if ($phase == 'install' && function_exists('libraries_get_path')) {
+    $filewrapper_path = libraries_get_path('filewrapper');
+    $chosen_path = libraries_get_path('chosen');
+    if (!$filewrapper_path) {
+      $requirements['filewrapper'] = array(
+        'severity' => REQUIREMENT_ERROR,
+        'description' => $t('Create class for file wrapper from !here and save in your library path by folder name filewrapper and filename filewrapper.php. Example folder path is like this %path',  array('!here' => l($t('Here'), 'https://gist.github.com/thecodepress/11242152'), '%path' => 'sites/all/libraries/filewrapper/filewrapper.php')), 
+      );
+    }
+  }
+  if (PHP_SHLIB_SUFFIX === 'dll') {
+    $requirements['posixrequired'] = array(
+      'severity' => REQUIREMENT_ERROR,
+      'description' => $t('This module only works on posix-based operating system and has the command sed that can be executed. Unfortunately the operating system you are using is not supported by this module'),
+    );
+  }
+  else {
+    $command = shell_exec('command -v sed');
+    if (empty($command)) {
+      $requirements['sedrequired'] = array(
+        'severity' => REQUIREMENT_ERROR,
+        'description' => $t('This module only works on posix-based operating system and has the command sed that can be executed. Unfortunately there is no sed command in your server'),
+      );
+    }
+    unset ($command);
+  }
+  unset ($t);
+  return $requirements;
+}
+

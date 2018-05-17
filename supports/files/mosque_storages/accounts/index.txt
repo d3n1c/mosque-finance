@@ -1,0 +1,5 @@
+{"title":"Kas","code":"1001","description":"Akun untuk menyimpan data harta kas","normal":"0","report_type":"0","nid":1,"creator":"1","created":1526002056,"updater":"1","updated":1526025350}
+{"title":"Sumbangan","code":"2001","description":"Akun untuk menyimpan data penerimaan sumbangan","normal":"1","report_type":"0","nid":2,"creator":"1","created":1526025637,"updater":"1","updated":1526025637}
+{"title":"Biaya","code":"3001","description":"Akun untuk menyimpan data biaya","normal":"0","report_type":"1","nid":3,"creator":"1","created":1526025735,"updater":"1","updated":1526025735}
+{"title":"Piutang","code":"4001","description":"Akun untuk menyimpan data harta piutang","normal":"0","report_type":"0","nid":4,"creator":"1","created":1526026575,"updater":"1","updated":1526026575}
+{"title":"Hutang","code":"5001","description":"Akun untuk menyimpan data hutang","normal":"1","report_type":"0","nid":5,"creator":"1","created":1526026674,"updater":"1","updated":1526026674}

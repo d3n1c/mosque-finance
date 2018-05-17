@@ -1,0 +1,95 @@
+<?php
+
+/* 
+ * Copyright (C) 2015 denic
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+ * @file
+ * Install file of the dncctypevars module
+ */
+
+//function dncctypevars_uninstall() {
+//  $vars = variable_get('dncctypevars_modules', array());
+//  if (count($vars) < 1) {
+//    variable_del('dncctypevars_modules');
+//    unset ($vars);
+//    return;
+//  }
+//  
+//  foreach ($vars as $key => $value) {
+//    variable_del('dncctypevars_' . $key);
+//  }
+//  variable_del('dncctypevars_modules');
+//  unset ($vars);
+//}
+
+/**
+ * Implements hook_schema
+ * 
+ * @return array
+ *   schema of the module data tables
+ */
+function dncctypevars_schema() {
+  $schema['dncctypevars_registers'] = array(
+    'description' => t('DNC\'s system to handle general location type'),
+    'fields' => array(
+      'varid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'size' => 'normal',
+        'description' => t('ID of the key that unique'),
+      ),
+      'varname' => array(
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => '255',
+        'description' => t('Name of the variable'),
+        'default' => '',
+      ),
+      'module' => array(
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => '255',
+        'description' => t('Module, the owner of the variable'),
+        'default' => '',
+      ),
+      'parentkey' => array(
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => '255',
+        'description' => t('Parent key name of the variable'),
+        'default' => '',
+      ),
+      'context' => array(
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => '255',
+        'description' => t('Context of the variable'),
+        'default' => '',
+      ),
+      'varvalue' => array(
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => '255',
+        'description' => t('Value of the variable'),
+        'default' => '',
+      ),
+    ),
+    'primary key' => array('varid'),
+  );
+  return $schema;
+}

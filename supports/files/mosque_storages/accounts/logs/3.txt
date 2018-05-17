@@ -1,0 +1,1 @@
+{"title":"Biaya","code":"3001","description":"Akun untuk menyimpan data biaya","normal":"0","report_type":"1","nid":3,"creator":"1","created":1526025735,"updater":"1","updated":1526025735}

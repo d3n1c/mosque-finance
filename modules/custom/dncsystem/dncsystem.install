@@ -1,0 +1,13 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the features module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function dncsystem_uninstall() {
+  variable_del('dncsystem_ct_modules');
+}

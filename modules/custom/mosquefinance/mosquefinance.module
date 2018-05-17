@@ -1,0 +1,507 @@
+<?php
+
+/*
+ * Copyright (C) 2018 denic
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
+
+/**
+ * Implementation of hook_load
+ * @return arg
+ **/
+function mosquefinance_load($arg) {
+  return check_plain($arg);
+}
+
+/**
+ * Implemented hook_permission
+ * to handle user access stricly
+ *
+ * @return array
+ */
+function mosquefinance_permission() {
+  return [
+    'view mosque finance' => [
+      'title' => t('View Mosque Finance'),
+      'description' => t('Viewing DNC\'s System to handling financial management of mosque')
+    ],
+    'administer mosque finance' => [
+      'title' => t('Administer Mosque Finance'),
+      'description' => t('Administer DNC\'s System to handling financial management of mosque')
+    ],
+    'use mosque finance' => [
+      'title' => t('Use Mosque Finance'),
+      'description' => t('Use and manipulate data of DNC System to handling financial management of mosque')
+    ],
+  ];
+}
+
+function mosquefinance_structures_of_data($type = NULL) {
+  // types of data are text or integer or array or attachments or reference with content type information
+  // all ids are integer
+  $structures = [
+    'entities' => [
+      'title' => ['type' => 'text', 'required' => TRUE],
+      'description' => ['type' => 'text'],
+    ],
+    'account_receivables' => [
+      'title' => ['type' => 'text', 'required' => TRUE],
+      'entity' => ['type' => 'reference', 'reference' => 'entities', 'required' => TRUE, 'widget' => 'select'],
+      'detail' => ['type' => 'text', 'required' => TRUE],
+      'worth' => ['type' => 'int'],
+    ],
+    'on_debts' => [
+      'title' => ['type' => 'text', 'required' => TRUE],
+      'entity' => ['type' => 'reference', 'reference' => 'entities', 'required' => TRUE, 'widget' => 'select'],
+      'detail' => ['type' => 'text', 'required' => TRUE],
+      'worth' => ['type' => 'int'],
+    ],
+    'balances' => [
+      'date' => ['type' => 'text', 'required' => TRUE],
+      'balance' => ['type' => 'int']
+    ],
+    'proposals' => [
+      'action' => ['type' => 'text', 'required' => TRUE],
+      'person_in_charge' => ['type' => 'reference', 'reference' => 'entities', 'widget' => 'select'],
+      'time' => ['type' => 'text', 'required' => TRUE],
+      'title' => ['type' => 'text', 'required' => TRUE],
+      'total' => ['type' => 'int'],
+      'journals' => ['type' => 'text', 'required' => TRUE],
+    ]
+  ];
+  return empty($type) ? $structures : (empty($structures[$type]) ? NULL : $structures[$type]);
+}
+
+function mosquefinance_listing_view($type = NULL) {
+  $structures = [
+    'entities' => ['title', 'description'],
+    'account_receivables' => ['title', 'entity', 'worth'],
+    'on_credits' => ['title', 'entity', 'worth'],
+    'balances' => ['date', 'balance'],
+    'proposals' => ['time', 'title', 'total', 'person_in_charge']
+  ];
+
+  return empty($type) ? $structures : (empty($structures[$type]) ? NULL : $structures[$type]);
+}
+
+/**
+ * Implementation of hook_menu
+ *
+ * @return array
+ */
+function mosquefinance_menu() {
+  $items = [];
+
+  module_load_include('inc', 'mosquefinance', 'mosquefinance.admin');
+  mosquefinance_admin_menu($items);
+  module_load_include('inc', 'mosquefinance', 'mosquefinance.reference');
+  mosquefinance_reference_menu($items);
+  module_load_include('inc', 'mosquefinance', 'mosquefinance.action');
+  mosquefinance_action_menu($items);
+  module_load_include('inc', 'mosquefinance', 'mosquefinance.report');
+  mosquefinance_report_menu($items);
+  $items['mosquefinance/search-autocomplete/%mosquefinance'] = [
+    'title' => 'Searching for Autocomplete',
+    'page callback' => 'mosquefinance_search_for_autocomplete',
+    'access arguments' => ['use mosque finance'],  //or whatever permission makes sense
+    'page arguments' => [2],
+    'type' => MENU_CALLBACK,
+  ];
+
+  return $items;
+}
+
+function mosquefinance_get_fixed_account_names() {
+  return ['cash', 'debt', 'account_receivable', 'cost', 'capital'];
+}
+
+function mosquefinance_set_data_type($type, array $data = []) {
+  if (empty($data)) {
+    return;
+  }
+  
+  $structure = mosquefinance_structures_of_data($type);
+  if (empty($structure)) {
+    return $data;
+  }
+  
+  $result = [];
+  foreach ($data as $keys => $values) {
+    if (!empty($structure[$keys]['type'])) {
+      if (in_array($structure[$keys]['type'], ['int', 'integer', 'reference', 'time'])) {
+        settype($values, 'int');
+      }
+      elseif ($structure[$keys]['type'] == 'float') {
+        settype($values, 'float');
+      }
+    }
+    elseif (in_array($keys, ['nid', 'creator', 'created', 'updater', 'updated', 'deleter', 'deleted'])) {
+      settype($values, 'int');
+    }
+    $result[$keys] = $values;
+  }
+  unset ($structure);
+  
+  return $result;
+}
+
+function mosquefinance_journal_scenarios($action = NULL) {
+  $gconfigs = variable_get('mosquefinance_configs', []);
+  $scenarios = [
+    'incoming' => [
+      $gconfigs['accounts']['cash'],
+      $gconfigs['accounts']['capital']
+    ],
+    'expending' => [
+      $gconfigs['accounts']['cost'],
+      $gconfigs['accounts']['cash']
+    ],
+    'debting' => [
+      $gconfigs['accounts']['cash'],
+      $gconfigs['accounts']['debt']
+    ],
+    'crediting' => [
+      $gconfigs['accounts']['account_receivable'],
+      $gconfigs['accounts']['cash']
+    ]
+  ];
+  unset ($gconfigs);
+  return empty($action) ? $scenarios : (empty($scenarios[$action]) ? NULL : $scenarios[$action]);
+}
+
+function mosquefinance_get_balance($date = NULL) {
+  $data = dncfilewrapper_get_listing('balances', [], [], FALSE, TRUE);
+  if (empty($data)) {
+    unset ($data);
+    return;
+  }
+    
+  if (empty($date)) {
+    return $data[0];
+  }
+  
+  if (strtotime($data[0]['date']) < strtotime($date)) {
+    return;
+  }
+  
+  $result = NULL;
+  foreach ($data as $values) {
+    if ($values['date'] > $date) {
+      continue;
+    }
+    $result = $values;
+    break;
+  }
+  unset ($data);
+  return $result;
+}
+
+function mosquefinance_get_frydate_from_now($time = NULL) {
+  $time = empty($time) ? time() : $time;
+  $day = date('w', $time);
+  if ($day == 5) {
+    unset ($day);
+    $time = date('Y-m-d', $time);
+    $time = strtotime($time);
+    return $time;
+  }
+  if ($day > 5) {
+    $time += (60 * 60 * 24);
+  }
+  $time = date('Y-m-d', $time);
+  $time = strtotime($time);
+  $day = date('w', $time);
+  $day = 5 - $day;
+  return $time + ((60 * 60 * 24) * $day);
+}
+
+function mosquefinance_cashflow_time_indexed($date = NULL, $write = FALSE, array $data = []) {
+  $filepath = file_default_scheme() . '://cashflows';
+  $filepath = drupal_realpath($filepath);
+  clearstatcache();
+  if (!is_dir($filepath)) {
+    mkdir($filepath, 0775);
+  }
+  if (empty($date)) {
+    $result = [];
+    $folder = scandir($filepath);
+    foreach ($folder as $keys => $values) {
+      if ($values != '.' && $values != '..') {
+        $dname = preg_replace('/.json$/', '', $values);
+        $result[] = $dname;
+        unset ($dname);
+      }
+    }
+    unset ($folder);
+    sort($result);
+    return $result;
+  }
+  $filepath .= DIRECTORY_SEPARATOR . $date . '.json';
+  clearstatcache();
+  if (!is_file($filepath)) {
+    if (empty($write)) {
+      unset ($filepath);
+      return;
+    }
+  }
+  if (empty($write)) {
+    $result = file_get_contents($filepath);
+    unset ($filepath);
+    $result = json_decode($result, TRUE);
+    return $result;
+  }
+  $dump = [];
+  foreach ($data as $values) {
+    settype($values['worth'], 'int');
+    settype($values['normal_action'], 'int');
+    settype($values['time'], 'int');
+    settype($values['transaction'], 'int');
+    $dump[] = $values;
+  }
+  $data = $dump;
+  unset ($dump);
+  file_put_contents($filepath, json_encode($data), LOCK_EX);
+  unset ($filepath);
+  return TRUE;
+}
+
+function mosquefinance_save_transactions($datasource, &$context) {
+  $results = dnctinyaccounting_save_transactions($datasource['transactions']);
+  if (empty($results)) {
+    unset ($results);
+    return;
+  }
+  $context['results']['transactions'] = [];
+  foreach ($results as $keys => $values) {
+    $context['results']['transactions'][$keys] = [
+      'proposal' => $datasource['transactions'][$keys]['proposal'],
+      'transaction' => $values['nid']
+    ];
+  }
+  unset ($results);
+  sleep(3);
+}
+
+function mosquefinance_update_proposals($datasource, &$context) {
+//  watchdog('context_transactions', '<pre>@print</pre>', ['@print' => print_r($context, TRUE)]);
+  if (empty($context['results']['transactions'])) {
+    return;
+  }
+  $configs = variable_get('mosquefinance_configs', []);
+  $daccount = dncfilewrapper_get_data('accounts', $configs['accounts']['debt']);
+  $caccount = dncfilewrapper_get_data('accounts', $configs['accounts']['account_receivable']);
+  $proposals = [];
+  $debts = [];
+  $claims = [];
+  $pdeletes = [];
+  $trindexes = [];
+  foreach ($context['results']['transactions'] as $keys => $values) {
+    $transaction = dncfilewrapper_get_data('transactions', $values['transaction']);
+    $pdata = dncfilewrapper_get_data('proposals', $values['proposal']);
+    if (empty($pdata['nid'])) {
+      unset ($pdata);
+      continue;
+    }
+    $pdata['transaction'] = $values['transaction'];
+    $proposals[] = $pdata;
+    $pdeletes[] = ['nid' => $values['proposal']];
+    
+    $debt = [];
+    $claim = [];
+    $entity = [];
+    if (!empty($pdata['person_in_charge'])) {
+      $entity = dncfilewrapper_get_data('entities', $pdata['person_in_charge']);
+      if ($pdata['action'] == 'debting') {
+        $on_debt = dncfilewrapper_get_listing('on_debts', [
+          'type' => 'field',
+          'fields' => [
+            'entity' => $pdata['person_in_charge']
+          ]
+        ]);
+        if (!empty($on_debt[0])) {
+          $debt = $on_debt[0];
+        }
+        unset ($on_debt);
+      }
+    }
+    
+    foreach ($pdata['journals'] as $key => $value) {
+      $worth = 0;
+      if ($value['account'] == $configs['accounts']['debt']) {
+        $debt['title'] = $entity['title'];
+        $debt['entity'] = $entity['nid'];
+        $debt['detail'] = empty($debt['detail']) ? [] : $debt['detail'];
+        $debt['detail'][] = [
+          'time' => $transaction['time'],
+          'transaction' => $values['transaction'],
+          'action' => $value['action'],
+          'worth' => $value['worth']
+        ];
+        foreach ($debt['detail'] as $val) {
+          if ($val['action'] != $daccount['normal']) {
+            $worth -= $val['worth'];
+          }
+          else {
+            $worth += $val['worth'];
+          }
+        }
+        $debt['worth'] = $worth;
+        if (!empty($debts)) {
+          foreach ($debts as $ke => $val) {
+            if ($val['entity'] == $debt['entity']) {
+              $debts[$ke] = $debt;
+              unset ($debt);
+              break;
+            }
+          }
+        }
+        if (!empty($debt)) {
+          $debts[] = $debt;
+        }
+        $debt = [];
+      }
+      elseif ($value['account'] == $configs['accounts']['account_receivable']) {
+        $claim['title'] = $entity['title'];
+        $claim['entity'] = $entity['nid'];
+        $claim['detail'] = empty($claim['detail']) ? [] : $claim['detail'];
+        $claim['detail'][] = [
+          'time' => $transaction['time'],
+          'transaction' => $values['transaction'],
+          'action' => $value['action'],
+          'worth' => $value['worth']
+        ];
+        foreach ($claim['detail'] as $val) {
+          if ($val['action'] != $daccount['normal']) {
+            $worth -= $val['worth'];
+          }
+          else {
+            $worth += $val['worth'];
+          }
+        }
+        $claim['worth'] = $worth;
+        if (!empty($claims)) {
+          foreach ($claims as $ke => $val) {
+            if ($val['entity'] == $claim['entity']) {
+              $claims[$ke] = $claim;
+              unset ($claim);
+              break;
+            }
+          }
+        }
+        if (!empty($claim)) {
+          $claims[] = $claim;
+        }
+        $claim = [];
+      }
+      elseif ($value['account'] == $configs['accounts']['cash']) {
+        $trindexes[date('Y-m-d', $transaction['time'])][$transaction['time'] . '_' . str_repeat('0', 10 - strlen($transaction['nid'])) . $transaction['nid']] = [
+          'transaction' => $transaction['nid'],
+          'time' => $transaction['time'],
+          'normal_action' => $value['action'],
+          'action' => $pdata['action'],
+          'worth' => $value['worth']
+        ];
+      }
+      unset ($worth);
+    }
+    unset ($entity, $claim, $debt);
+    unset ($pdata, $transaction, $journals);
+  }
+  
+  // save debts if any
+  if (!empty($debts)) {
+    dncfilewrapper_update_data($GLOBALS['user']->uid, ['on_debts' => $debts]);
+  }
+  
+  // save claims if any
+  if (!empty($claims)) {
+    dncfilewrapper_update_data($GLOBALS['user']->uid, ['account_receivables' => $claims]);
+  }
+  
+  // save trindexes
+  if (!empty($trindexes)) {
+    foreach ($trindexes as $keys => $values) {
+      $indextr = [];
+      ksort($values);
+      foreach ($values as $value) {
+        $indextr[] = $value;
+      }
+      mosquefinance_cashflow_time_indexed($keys, TRUE, $indextr);
+      unset ($indextr);
+    }
+  }
+  
+  dncfilewrapper_update_data($GLOBALS['user']->uid, ['proposals' => $proposals]);
+  sleep(3);
+//  watchdog('deleteproposal', '<pre>@print</pre>', ['@print' => print_r($pdeletes, TRUE)]);
+  dncfilewrapper_delete_data($GLOBALS['user']->uid, ['proposals' => $pdeletes]);
+  unset ($configs, $proposals, $debts, $claims, $pdeletes, $trindexes);
+  sleep(3);
+}
+
+function mosquefinance_save_journals($datasource, &$context) {
+  if (empty($context['results']['transactions']) || empty($datasource['journals'])) {
+    return;
+  }
+  
+  $journals = [];
+  foreach ($datasource['journals'] as $keys => $values) {
+    $journals[$keys] = $values;
+    $journals[$keys]['transaction'] = $context['results']['transactions'][$values['proposal']]['transaction'];
+  }
+  
+  if (!empty($journals)) {
+    dncfilewrapper_update_data($GLOBALS['user']->uid, ['journals' => $journals]);
+  }
+  unset ($journals);
+  sleep(3);
+}
+
+function mosquefinance_update_balance($datasource, &$context) {
+  if (empty($datasource['balance']['date']) || empty($datasource['balance']['balance'])) {
+    return;
+  }
+  $datasource['balance']['date'] = date('Y-m-d', $datasource['balance']['date']);
+  dncfilewrapper_update_data($GLOBALS['user']->uid, ['balances' => [$datasource['balance']]]);
+  $context['results']['balance'] = $datasource['balance'];
+  sleep(3);
+}
+
+function mosquefinance_saving_recent_finished($success, $results, $operations) {
+  if ($success) {
+    sleep(5);
+    drupal_set_message(t('Balance report is ready'));
+    drupal_goto('mosquefinance/report/weekly', [
+      'query' => [
+        'date' => $results['balance']['date']
+      ]
+    ]);
+  }
+  else {
+    // An error occurred.
+    // $operations contains the operations that remained unprocessed.
+    $error_operation = reset($operations);
+    drupal_set_message(t('An error occurred while processing @operation with arguments : @args', array('@operation' => $error_operation[0], '@args' => print_r($error_operation[0], TRUE))));
+  }
+}
+
+function mosquefinance_tohijr($gregorydate) {
+  $configs = variable_get('mosquefinance_configs', []);
+  $gregorydate = strtotime($gregorydate);
+  $gregorydate += (60 * 60 * 24 * $configs['hijr_adjustment']);
+  $gregorydate = date('Y-m-d', $gregorydate);
+  return dncsystem_tohijri($gregorydate);
+}

@@ -1,0 +1,1 @@
+{"title":"Sumbangan","code":"2001","description":"Akun untuk menyimpan data penerimaan sumbangan","normal":"1","report_type":"0","nid":2,"creator":"1","created":1526025637,"updater":"1","updated":1526025637}

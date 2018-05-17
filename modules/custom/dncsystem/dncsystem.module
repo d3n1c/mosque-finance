@@ -1,0 +1,1885 @@
+<?php
+
+/*
+ * Copyright (C) 2015 denic
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+ * @file
+ * Frequently used general functions
+ *
+ * Handle all main function of the system that used by
+ * another module together with it's own function
+ * Just think like sharing any function that generally
+ * frequently used
+ */
+
+// require_once drupal_get_path('module', 'dncsystem') . '/dncsystem.content.inc';
+
+/**
+ * Implementation of hook_load
+ * @return arg
+ **/
+function dncsystem_load($arg) {
+  return check_plain($arg);
+}
+
+/**
+ * Implemented hook_permission
+ * to handle user access stricly
+ *
+ * @return array
+ */
+function dncsystem_permission() {
+  return array (
+    'view dnc system' => array(
+      'title' => t('View DNC System'),
+      'description' => t('View DNC\'s System')
+    ),
+    'administer dnc system' => array(
+      'title' => t('Administer DNC System'),
+      'description' => t('Administer DNC\'s System')
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_menu
+ *
+ * @return array
+ */
+function dncsystem_menu() {
+  $items = array();
+  $items['admin/config/dncsystem'] = array(
+    'title' => 'DNC\'s System',
+    'description' => 'Settings for DNC\'s System environment',
+    'position' => 'right',
+    'weight' => 0,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('administer site configuration'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+  $items['admin/structure/dncsystem'] = array(
+    'title' => 'DNC\'s System',
+    'description' => 'Structuring DNC\'s System environment',
+    'weight' => 0,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('administer site configuration'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+  $items['dncsystem/timenow'] = array(
+    'title' => 'Server Time',
+    'description' => 'Get server\'s time',
+    'access callback' => TRUE,
+    'page callback' => 'dncsystem_get_time',
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Get the server time from internal or external requests
+ *
+ * @param $external
+ *   Boolean of where the request come from
+ *
+ * @return text
+ *   If rquest come from external, then output
+ *   just show in plain text.
+ *   If from internal, it's just return output
+ *   variable
+ */
+function dncsystem_get_time($external = TRUE) {
+  if (!empty($external)) {
+    echo date('Y-m-d H:i:s', time());
+    drupal_exit();
+  }
+  return date('Y-m-d H:i:s', time());
+}
+
+/**
+ * Provides node update service generally following
+ * drupal's standard node editing form environmentals
+ *
+ * @param int $nid
+ *   ID of the node that will be update
+ * @param string $redirect
+ *   Redirecting to appropriate path, choosed by request
+ *
+ * @return array
+ *   drupal display rendering of the form
+ */
+function dncsystem_form_update_node($nid, $redirect = NULL) {
+  module_load_include('inc', 'node', 'node.pages');
+  $node = node_load($nid);
+  $node->status = NODE_PUBLISHED;
+  if (!empty($redirect)) {
+    $_GET['destination'] = $redirect;
+  }
+  $form = node_page_edit($node);
+  unset ($node);
+  return drupal_render($form);
+}
+
+/**
+ * Provides node add service generally following
+ * drupal's standard node add form environmentals
+ *
+ * @global object $user
+ *   User object variable of active logged user
+ *
+ * @param string $type
+ *   Type of content
+ * @param string $title
+ *   Title of new node
+ * @param string $redirect
+ *   Redirected path after finishing action
+ *
+ * @return array
+ *   Array of output of the node add form
+ */
+function dncsystem_form_add_node($type, $title, $redirect = NULL) {
+  module_load_include('inc', 'node', 'node.pages');
+  global $user;
+  if (!empty($redirect)) {
+    $_GET['destination'] = $redirect;
+  }
+  $types = node_type_get_types();
+  $node = (object) array('uid' => $user->uid, 'name' => (isset($user->name) ? $user->name : ''), 'type' => $type, 'language' => LANGUAGE_NONE, 'title' => $title);
+  node_object_prepare($node);
+  drupal_set_title(t('Create @name', array('@name' => $types[$type]->name)), PASS_THROUGH);
+  $form = drupal_get_form($type . '_node_form', $node);
+  return drupal_render($form);
+}
+
+/**
+ * Checking the given string is serialized or not ?
+ *
+ * @param string $string
+ *   String parameters that will be checked
+ *
+ * @return boolean
+ *   True if the string is serialized, or false if otherwise
+ */
+function dncsystem_is_serialized($string = NULL) {
+  if (empty($string)) {
+    return;
+  }
+  $libraries = libraries_get_libraries();
+  if (empty($libraries['is_serialized'])) {
+    unset ($libraries);
+    $messages = array();
+    $messages[] = t('No is_serialized.php libraries found :(');
+    $messages[] = t('You can download first in') . ' ' . l(t('here'), 'https://gist.github.com/cs278/217091', array('external' => TRUE));
+    $messages = implode('<br />', $messages);
+    drupal_set_message($messages, 'error', FALSE);
+    unset ($messages);
+    return;
+  }
+  require_once $libraries['is_serialized'] . '/is_serialized.php';
+  unset ($libraries);
+  return is_serialized($string);
+}
+
+/**
+ * Provide unserializing the serialized string
+ * Firstly checking whether the string is serialized or not
+ * Then will convert to unserialized output variable if true
+ *
+ * @param string $string
+ *   String that will convert
+ *
+ * @return array
+ *   Give an array result if successfull, or original string
+ *   if otherwise
+ */
+function dncsystem_unserialize($string) {
+  if (!is_string($string) || empty($string)) {
+    return $string;
+  }
+
+  $check = dncsystem_is_serialized($string);
+  if ($check !== TRUE) {
+    unset ($check);
+    return $string;
+  }
+  unset ($check);
+
+  return unserialize($string);
+}
+
+/**
+ * Implementing hook field_formatter_info()
+ *
+ * @return array
+ */
+function dncsystem_field_formatter_info() {
+  return array(
+    'view_serialize' => array(
+      'label' => t('View Serialized'),
+      'field types' => array('text_with_summary', 'text', 'text_long'),
+      'settings' => array(
+        'delimiters' => '; |, ',
+        'keysuffix' => ': ',
+        'converter' => NULL,
+      ),
+    ),
+    'display_on_external' => array(
+      'label' => t('External Display'),
+      'field types' => array('text', 'number_integer', 'list_integer', 'list_text'),
+      'settings' => array(
+        'converter' => NULL,
+      ),
+    ),
+    'referenced_display' => array(
+      'label' => t('Display from Reference'),
+      'field types' => array('text', 'number_integer', 'list_integer', 'list_text'),
+      'settings' => array(
+        'converter' => NULL,
+        'context' => NULL,
+      ),
+    ),
+    'circled_image' => array(
+      'label' => t('Circled Image'),
+      'field types' => array('image'),
+      'settings' => array(
+        'converter' => NULL,
+        'context' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementing hook_field_formatter_settings_form()
+ *
+ * @param string $field
+ *   The formatted field
+ * @param object $instance
+ *   Instance of the field
+ * @param string $view_mode
+ *   Mode of output view
+ * @param array $form
+ *   Form array
+ * @param array $form_state
+ *   $form_state variable array
+ *
+ * @return array
+ *   Element array of the setting form
+ */
+function dncsystem_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+  $element = array();
+  if ($display['type'] == 'view_serialize') {
+    $element['delimiters'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Delimiters'),
+      '#size' => 20,
+      '#description' => t('Hierarchical level delimiter, separate by pipe "|". i.e. "; |, "'),
+      '#default_value' => $settings['delimiters'],
+    );
+    $element['keysuffix'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Key Suffix'),
+      '#size' => 5,
+      '#description' => t('Suffix of key array. i.e. ": "'),
+      '#default_value' => $settings['keysuffix'],
+    );
+    $element['converter'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Converter Function'),
+      '#size' => 20,
+      '#description' => t('Function to convert value, "empty" for displaying as is and no converting'),
+      '#default_value' => $settings['converter'],
+    );
+  }
+  elseif ($display['type'] == 'display_on_external') {
+    $element['converter'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Converter Function'),
+      '#size' => 20,
+      '#description' => t('Function to convert value, "empty" for displaying as is and no converting'),
+      '#default_value' => $settings['converter'],
+    );
+  }
+  elseif ($display['type'] == 'referenced_display') {
+    $element['converter'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Converter Function'),
+      '#size' => 20,
+      '#description' => t('Function to convert value, "empty" for displaying as is and no converting'),
+      '#default_value' => $settings['converter'],
+    );
+    $element['context'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Context'),
+      '#size' => 20,
+      '#description' => t('Context of reference that give the value'),
+      '#default_value' => $settings['context'],
+      '#states' => array(
+        'visible' => array(
+          ':input[name="converter"]' => array('filled' => TRUE),
+        ),
+      ),
+    );
+  }
+  unset ($display, $settings);
+  return $element;
+}
+
+/**
+ * Implementing hook_field_formatter_settings_summary
+ *
+ * @param string $field
+ *   The formatted field
+ * @param object $instance
+ *   Instance of the field
+ * @param string $view_mode
+ *   Mode of output view
+ *
+ * @return array
+ *   Array of the output display
+ */
+function dncsystem_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $display = $instance['display'][$view_mode];
+  $settings = $instance['display'][$view_mode]['settings'];
+
+  if ($display['type'] == 'view_serialize') {
+    $dump = empty($settings['delimiters']) ? NULL : explode('|', trim($settings['delimiters']));
+    $dmp = '';
+    if (!empty($dump)) {
+      foreach ($dump as $key => $value) {
+        $dmp .= (!empty($dmp) ? '; ' : NULL) . '[' . $key . ']=>' . $value;
+      }
+    }
+    $output = t('Delimiters: @dmp<br />Key Suffix: @keysuffix<br />Converter: @converter', array(
+        '@dmp' => $dmp,
+        '@keysuffix' => $settings['keysuffix'],
+        '@converter' => $settings['converter'],
+    ));
+    unset ($dump, $dmp);
+    return $output;
+  }
+  elseif ($display['type'] == 'display_on_external') {
+    $output = t('Converter: @converter', array(
+        '@converter' => $settings['converter'],
+    ));
+    return $output;
+  }
+  elseif ($display['type'] == 'referenced_display') {
+    $output = t('Converter: @converter<br />Context: @context', array(
+        '@converter' => $settings['converter'],
+        '@context' => $settings['context'],
+    ));
+    return $output;
+  }
+}
+
+/**
+ * Implementing hook_field_formatter_view()
+ *
+ * @param string $entity_type
+ *   Type of the entity or content, can be node, comment, taxonomi, or user
+ * @param object $entity
+ *   Entity that will be formatted
+ * @param string $field
+ *   Targeted field
+ * @param object $instance
+ *   Instance of used field
+ * @param string $langcode
+ *   Language code
+ * @param array $items
+ *   Items of the output
+ * @param string $display
+ *   Display view
+ *
+ * @return array
+ *   Array of the output element
+ */
+function dncsystem_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $settings = $display['settings'];
+  $element = array();
+  if ($display['type'] == 'view_serialize') {
+    $delimiters = explode('|', $settings['delimiters']);
+    foreach ($items as $delta => $item) {
+      $dump = dncsystem_unserialize($item['value']);
+      if (is_array($dump) && count($dump) > 0) {
+        $dump = empty($settings['converter']) || !function_exists($settings['converter']) ? $dump : $settings['converter']($dump);
+        $dump = dncsystem_convert_hierarchical_array_to_string($dump, $delimiters, $settings['keysuffix']);
+      }
+      $element[$delta]['#markup'] = empty($dump) ? NULL : $dump;
+      unset ($dump);
+    }
+    unset ($delimiters);
+  }
+  elseif ($display['type'] == 'display_on_external') {
+    foreach ($items as $delta => $item) {
+      $dump = $item['value'];
+      $dump = empty($settings['converter']) || !function_exists($settings['converter']) ? $dump : $settings['converter']($dump, $entity);
+      $element[$delta]['#markup'] = empty($dump) ? NULL : $dump;
+      unset ($dump);
+    }
+  }
+  elseif ($display['type'] == 'referenced_display') {
+    foreach ($items as $delta => $item) {
+      $dump = $item['value'];
+      $dump = empty($settings['converter']) || !function_exists($settings['converter']) ? $dump : $settings['converter']($dump, $settings['context']);
+      $element[$delta]['#markup'] = empty($dump) ? NULL : $dump;
+      unset ($dump);
+    }
+  }
+  elseif ($display['type'] == 'circled_image') {
+    foreach ($items as $delta => $item) {
+      $show = image_style_url('thumbnail', $item['uri']);
+      $real = file_create_url($item['uri']);
+      $display = dncsystem_circle_image($show, $real);
+      unset ($show, $real);
+      $element[$delta]['#markup'] = $display;
+      unset ($display);
+    }
+  }
+  unset ($settings);
+  return $element;
+}
+
+/**
+ * Converting the hierarchical array to string
+ * Sometime we need to convet array to output array
+ * in better look and feel and readable by human
+ *
+ * @param array $vars
+ *   Given variable array that will be converted
+ * @param array $delimiters
+ *   Some of delimiters to sign of the separator
+ * @param string $keysuffix
+ *   Suffix of the key if any
+ * @param int $level
+ *   Integer to define the level
+ *
+ * @return string
+ *   String of the result
+ */
+function dncsystem_convert_hierarchical_array_to_string(array $vars = array(), array $delimiters = array(), $keysuffix = NULL, $level = 0) {
+  // checking
+  $return = NULL;
+  foreach ($vars as $key => $value) {
+    $dump = !is_array($value) ? (empty($keysuffix) ? NULL : (!is_numeric($key) ? $key . $keysuffix : NULL)) . $value : dncsystem_convert_hierarchical_array_to_string($value, $delimiters, $keysuffix, ($level + 1));
+    $return .= (empty($return) ? NULL : (empty($delimiters[$level]) ? ' ' : $delimiters[$level])) . $dump;
+    unset ($dump);
+  }
+  return $return;
+}
+
+/**
+ * Give the saving apdate node operation
+ *
+ * @param object $node
+ *   Targeted node object
+ * @param int $uid
+ *   The choosed user id (uid)
+ *
+ * @return object
+ *   Node object result after saved
+ */
+function dncsystem_exec_update_node($node, $uid = NULL) {
+  $uid = empty($uid) ? 1 : $uid;
+  $node->uid = empty($node->uid) ? $uid : $node->uid;
+  if (empty($node->nid)) {
+    node_submit($node);
+  }
+  node_save($node);
+  return $node;
+}
+
+/**
+ * Checking whether given string is valid base64 encoded or not
+ *
+ * @param string $string
+ *   String of the base64 encoded input
+ *
+ * @return boolean
+ *   True if right or false if otherwise
+ */
+function dncsystem_is_validBase64($string){
+  $decoded = base64_decode($string, true);
+  // Check if there is no invalid character in strin
+  if (!preg_match('/^[a-zA-Z0-9\/\r\n+]*={0,2}$/', $string)) return false;
+
+  // Decode the string in strict mode and send the responce
+   if(!base64_decode($string, true)) return false;
+
+  // Encode and compare it to origional one
+  $check = base64_encode($decoded);
+  $check = preg_replace('/\=\=$/', '', $check);
+  $string = preg_replace('/\=\=$/', '', $string);
+  if($check != $string) return false;
+
+  return true;
+}
+
+/**
+ * Get hostname by given URL
+ *
+ * @param string $url
+ *   The given URL
+ * @param boolean $scheme
+ *   Whether showing the scheme or not
+ * @param type $countpath
+ *   Count of the output path will be shown as a result
+ *
+ * @return string
+ *   String of the output hostname
+ */
+function dncsystem_get_hostname_by_url($url, $scheme = TRUE, $countpath = NULL) {
+  $result = parse_url($url);
+  if (empty($result['host'])) {
+    return empty($result['path']) ? NULL : $result['path'];
+  }
+  $path = empty($result['path']) ? array() : explode('/', preg_replace('/^\//', '', $result['path']));
+  $include = NULL;
+  if (!empty($countpath) && $countpath <= count($path) && count($path) > 0) {
+    $cnt = 0;
+    foreach ($path as $value) {
+      $include .= '/' . $value;
+      $cnt++;
+      if ($cnt >= $countpath){
+        break;
+      }
+    }
+    unset ($cnt);
+  }
+  $result = !empty($result['host']) ? ($scheme !== FALSE ? (!empty($result['scheme']) ? $result['scheme'] . '://' : 'http://') : NULL) . $result['host'] . (!empty($result['port']) ? ':' . $result['port'] : NULL) : NULL;
+  return $result . (empty($include) ? NULL : $include);
+}
+
+/**
+ * Retrieving result from targeted remote URL
+ *
+ * @param string $url
+ *   URL of the targeted server that serving the information
+ * @param array $headers
+ *   Header array requests
+ * @param string $method
+ *   Method that used can be GET or POST
+ * @param type $data
+ *   Array or string of the request data parameters
+ * @param integer $max_redirect
+ *   Integer maximum redirected request
+ * @param integer $timeout
+ *   Integer timeout in second
+ * @param string $context
+ *   String context of request
+ *
+ * @return array
+ *   Array or string result
+ */
+function dncsystem_retrieve_remote_url($url, array $headers = array(), $method = NULL, $data = NULL, $max_redirect = 3, $timeout = 30, $context = NULL) {
+  $options = [];
+  if (!empty($headers)) {
+    foreach ($headers as $keys => $values) {
+      $options['headers'][$keys] = $values;
+    }
+  }
+
+  $options['method'] = empty($method) ? 'GET' : $method;
+  if (!empty($data)) {
+    $options['data'] = is_string($data) ? $data : http_build_query((is_object($data) ? (array)$data : $data), '', '&');
+  }
+  $options['max_redirect'] = $max_redirect;
+  $options['timeout'] = $timeout;
+  if (!empty($context)) {
+    $options['context'] = $context;
+  }
+
+  $response = drupal_http_request($url, $options);
+  unset ($options);
+  // print_r($response); exit;
+  if ($response->code == 200) {
+    return empty($response->data) ? NULL : json_decode($response->data, TRUE);
+  }
+
+  return empty($response->error) ? NULL : $response->error;
+}
+
+function dncsystem_retrieve_remote_url_snoopy($url, array $headers = array(), $method = NULL, array $data = array()) {
+  $libraries = libraries_get_libraries();
+  if (empty($libraries['snoopy'])) {
+    unset ($libraries);
+    $messages = array();
+    $messages[] = t('No snoopy libraries found :(');
+    $messages[] = t('You can download first in') . ' ' . l(t('here'), 'http://snoopy.sourceforge.net', array('external' => TRUE));
+    $messages = implode('<br />', $messages);
+    drupal_set_message($messages, 'error', FALSE);
+    unset ($messages);
+    return;
+  }
+  $return = NULL;
+  require_once $libraries['snoopy'] . '/Snoopy.class.php';
+  unset ($libraries);
+  $result = new Snoopy();
+  if (count($headers) > 0) {
+    foreach ($headers as $keys => $values) {
+      $result->rawheaders[$keys] = $values;
+    }
+  }
+  if (count($data) > 0) {
+    $result->httpmethod = empty($method) || $method != 'POST' ? 'GET' : $method;
+    $result->submit($url, $data);
+  }
+  else {
+    $result->fetchtext($url);
+  }
+  if (!empty($result->results)) {
+    $return = json_decode($result->results, TRUE);
+    $return = empty($return) && !is_array($return) ? $result->results : (count($return) < 1 ? NULL : $return);
+  }
+  unset ($result);
+  return $return;
+}
+
+/**
+ * Check registered user by given username
+ *
+ * @param string $username
+ *   The username to be searching key
+ *
+ * @return boolean
+ *   False if not found, or output array if otherwise
+ */
+function dncsystem_check_user_by_username($username) {
+  $sql = db_select('users', 'u')
+          ->fields('u')
+          ->condition('u.name', $username)
+        ->execute();
+  $result = $sql->fetchAssoc();
+  unset ($sql);
+  if (empty($result['uid'])) {
+    unset($result);
+    return FALSE;
+  }
+  return $result;
+}
+
+/**
+ * Update password of the user
+ *
+ * @param string $username
+ *   Username that will be edited
+ * @param string $password
+ *   New proposed password
+ *
+ * @return object
+ *   Account object of the user with new updated password,
+ *   or NULL if data not found
+ */
+function dncsystem_update_user_password($username, $password) {
+  $check = dncsystem_check_user_by_username($username);
+  if (empty($check)) {
+    unset ($check);
+    return;
+  }
+  unset($check);
+
+  $account = user_load_by_name($username);
+  require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+  $account->pass = user_hash_password($password);
+  user_save($account);
+  return $account;
+}
+
+/**
+ * Custom user creation programmatically
+ *
+ * @param string $username
+ *   Username that will be create
+ * @param type $password
+ *   Password of the user
+ * @param type $mail
+ *   Email address of the user
+ * @param type $active
+ *   Whether the status active or not after creation
+ *
+ * @return object
+ *   Null if failed to create, user object if otherwise
+ */
+function dncsystem_create_user($username, $password, $mail, $active = TRUE) {
+  $check = valid_email_address($mail);
+  if ($check !== TRUE) {
+    unset ($check);
+    return;
+  }
+  unset ($check);
+  $check = dncsystem_check_user_by_username($username);
+  if (!empty($check)) {
+    return $check;
+  }
+  unset($check);
+
+  $account = new stdClass();
+  $account->name = $username;
+  $account->mail = $mail;
+  $account->init = $mail;
+  require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+  $account->pass = user_hash_password($password);
+  $account->status = $active !== TRUE ? 0 : 1;
+  $account->roles = array(DRUPAL_AUTHENTICATED_RID => 'authenticated user');
+  user_save($account);
+  if ($account->uid) {
+    return (array)$account;
+  }
+  unset ($account);
+  return;
+}
+
+/**
+ * Serve server's general informations in
+ * plain text output
+ */
+function dncsystem_show_server_infos() {
+  $output = dncsystem_get_server_infos();
+  print_r($output); exit;
+}
+
+/**
+ * Execution action function of server's infos service
+ *
+ * @global string $base_url
+ *   Global variable of the base URL
+ *
+ * @return array
+ *   output array of the infos
+ */
+function dncsystem_get_server_infos() {
+  global $base_url;
+  $infos = array();
+  $infos['base_url'] = $base_url;
+  $infos['site_name'] = variable_get('site_name', '');
+  $infos['site_slogan'] = variable_get('site_slogan', '');
+  $infos['server_time'] = dncsystem_date('j F Y H:i:s', time());
+  return $infos;
+}
+
+/**
+ * Date conversion using local settings
+ * Alternative of default system or PHP conversion
+ * This action dependence to server's language settings
+ *
+ * @param string $format
+ *   PHP standard format of date function
+ * @param string $timestamp
+ *   string timestamp of given time
+ *
+ * @return string
+ *   String of converted date
+ */
+function dncsystem_date($format = 'Y-m-d H:i:s', $timestamp) {
+  $timezone = date_default_timezone();
+  $langcode = language_default('language');
+  return format_date($timestamp, 'custom', $format, $timezone, $langcode);
+}
+
+/**
+ * Serving global random numeric for any purpose
+ * Hash creation for uniq output
+ *
+ * @param string $salt
+ *   Salt of the random
+ *
+ * @return integer
+ *   numeric random output
+ */
+function dncsystem_set_random_ticket($salt = 'dncsystem') {
+  $ticket = time();
+  $ticket .= rand(100000, 999999);
+  $ticket .= $salt;
+  $ticket = hash('sha256', $ticket);
+  $ticket = crc32($ticket);
+  return abs($ticket);
+}
+
+/**
+ * Checking whether given date is valid or not
+ *
+ * @param string $date
+ *   Date in string format 'YYYY-MM-DD' or array with this format
+ *
+ * @return array
+ *   return bolean true or false in array
+ */
+function dncsystem_check_invalid_date($date) {
+  $dates = !is_array($date) ? array($date) : $date;
+  $return = array();
+  foreach ($dates as $values) {
+    $checkit = date('Y-n-j', strtotime($values));
+    $dump = explode('-', $checkit);
+    $return[$values] = checkdate($dump[1], $dump[2], $dump[0]) !== TRUE ? FALSE : TRUE;
+    unset ($dump, $checkit);
+  }
+  unset ($dates);
+  return count($return) < 2 ? $return[$date] : $return;
+}
+
+/**
+ * Implementing query alter
+ *
+ * @param QueryAlterableInterface $query
+ */
+function dncsystem_query_searching_dnc_master_alter(QueryAlterableInterface $query) {
+  $string = $query->getMetaData('string');
+  $scheme = $query->getMetaData('scheme');
+  $string = explode(' ', trim($string));
+  if (!empty($string)) {
+    $or = db_or();
+    foreach ($string as $keys => $values) {
+      $checking = trim($values);
+      if (!empty($checking)) {
+        if ($scheme['fields']['title'] == 'title') {
+          $or->condition('title', '%' . $values . '%', 'LIKE');
+        }
+        else {
+          if ($keys < 1) {
+            $query->leftJoin('field_data_' . $scheme['fields']['title'], 'n', 'node.nid = n.entity_id');
+          }
+          $finfo = field_info_field($scheme['fields']['title']);
+          $column = $finfo['type'] == 'entityreference' ? 'target_id' : 'value';
+          $or->condition('n.' . $scheme['fields']['title'] . '_' . $column, '%' . $values . '%', 'LIKE');
+          unset ($finfo, $column);
+        }
+      }
+      unset ($checking);
+    }
+    $query->condition($or);
+    unset ($or);
+  }
+  unset ($string, $scheme);
+}
+
+/**
+ * Implementing hook_form_alter
+ *
+ * @param array $form
+ *   Form array that will be altering
+ * @param array $form_state
+ *   Form state variables
+ * @param string $form_id
+ *   ID of the form
+ */
+function dncsystem_form_node_form_alter(&$form, &$form_state, $form_id) {
+  if (!empty($_GET['edit']) && is_array($_GET['edit']) && count($_GET['edit']) > 0) {
+    foreach ($_GET['edit'] as $keys => $values) {
+      if (!preg_match('/^field_/', $keys)) {
+        $form[$keys]['#default_value'] = $values;
+      }
+      else {
+        $finfo = field_info_field($keys);
+        $form[$keys][$form[$keys]['#language']]['#entity']['#default_value'] = $values;
+        unset ($finfo);
+      }
+    }
+  }
+}
+
+/**
+ * Retrieving result from node data object
+ * into structured array result dependence to
+ * choosen scheme
+ *
+ * @param array $scheme
+ *   DNC Scheme of the type of node
+ * @param object $node
+ *   Targeted node object
+ * @param array $field
+ *   Choosed fields that will be displayed,
+ *   can be string to if you only show one field
+ * @param string $render
+ *   Display rederer if any, NULL for no rendered
+ * @param boolean $forcenid
+ *   True if forced to nid infos
+ *
+ * @return array
+ *   result data array if successfull, or NULL if otherwise
+ */
+function dncsystem_retrieve_node_data($scheme, $node, $field = NULL, $render = NULL, $forcenid = FALSE) {
+  if (empty($scheme['fields'])
+          || empty($node->nid)
+          || empty($node->type)
+          || $node->type !== $scheme['content_type']) {
+    return;
+  }
+  $return = array('nid' => $node->nid);
+  $fields = empty($field) ? array_keys($scheme['fields']) : (!is_array($field) ? array($field) : $field);
+  foreach ($scheme['fields'] as $keys => $values) {
+    if (in_array($keys, $fields)) {
+      if ($values == 'title') {
+        $return[$keys] = $node->title;
+        if (!empty($render)) {
+          $return['v_' . $keys] = array(
+            '#markup' => $node->title,
+            '#access' => 1,
+          );
+        }
+      }
+      else {
+        $finfo = field_info_field($values);
+        $column = !empty($finfo['columns']) && count($finfo['columns']) > 0 ? array_keys($finfo['columns']) : array();
+        $column = count($column) < 1 ? array('value') : $column;
+        foreach($column as $key => $value) {
+          if ($value == 'format') {
+            unset ($column[$key]);
+          }
+        }
+        $items = field_get_items('node', $node, $values);
+        if (!empty($items)) {
+          if (in_array($finfo['type'], array('file', 'image'))) {
+            foreach ($items as $ky => $vl) {
+              $return[$keys][$ky] = (object)$vl;
+            }
+          }
+          else {
+            if (count($items) < 2) {
+              if (count($column) > 1) {
+                foreach ($column as $ky => $vl) {
+                  $return[$keys][$ky] = $finfo['type'] == 'date' ? str_replace('T', ' ', $items[0][$vl]) : $items[0][$vl];
+                }
+              }
+              else {
+                $return[$keys] = $finfo['type'] == 'date' ? str_replace('T', ' ', $items[0][$column[0]]) : $items[0][$column[0]];
+              }
+              if (!empty($render)) {
+                $return['v_' . $keys] = field_view_value('node', $node, $values, $items[0], $render);
+              }
+            }
+            else {
+              foreach ($items as $key => $value) {
+                if (count($column) > 1) {
+                  foreach ($column as $ky => $vl) {
+                    $return[$keys][$key][$ky] = $finfo['type'] == 'date' ? str_replace('T', ' ', $value[$vl]) : $value[$vl];
+                  }
+                }
+                else {
+                  $return[$keys][$key] = $finfo['type'] == 'date' ? str_replace('T', ' ', $value[$column[0]]) : $value[$column[0]];
+                }
+                if (!empty($render)) {
+                  $return['v_' . $keys][$key] = field_view_value('node', $node, $values, $value, $render);
+                }
+              }
+            }
+          }
+        }
+        unset ($column, $finfo, $items);
+      }
+    }
+  }
+  if (count($fields) < 2) {
+    if (!empty($render)) {
+      $return = array(
+        $fields[0] => $return[$fields[0]],
+        'v_' . $fields[0] => $return['v_' . $fields[0]],
+      );
+      if (!empty($forcenid)) {
+        $return['nid'] = $node->nid;
+      }
+    }
+    else {
+      $return = $return[$fields[0]];
+      if (!empty($forcenid)) {
+        $return = array(
+          'nid' => $node->nid,
+          $fields[0] => $return,
+        );
+      }
+    }
+  }
+  unset ($fields);
+  return $return;
+}
+
+/**
+ * Converting integer in string format to big integer format
+ *
+ * @param string $str
+ *   integer in string formatted
+ *
+ * @return int
+ *   result in big integer formatted
+ */
+function dncsystem_string_to_bigint($str) {
+  $theint = preg_match('/^[0-9]+/', $str, $matches) ? $matches[0] : 0;
+  if (PHP_INT_SIZE === 4) {
+    settype($theint, 'float');
+  }
+  elseif (PHP_INT_SIZE === 8) {
+    settype($theint, 'int');
+  }
+  return $theint;
+}
+
+/**
+ * Prepare cache directory
+ *
+ * @global object $user
+ *   user object global variable
+ *
+ * @param string $path
+ *   Path of request URL
+ *
+ * @return string
+ *   directory string result
+ */
+function dncsystem_prepare_cache_directory($path) {
+  global $user;
+  $directory = 'public://dnccache_displays';
+  $directory .= '/' . str_replace('/', '-', $path) . '/' . $user->sid;
+  file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
+  return $directory;
+}
+
+/**
+ * Set cache of time of given path
+ *
+ * @param string $path
+ *   Path of request URL
+ */
+function dncsystem_set_cache_time($path) {
+  $directory = dncsystem_prepare_cache_directory($path);
+  $uri = $directory . '/timecreation.txt';
+  unset ($directory);
+  $realpath = file_stream_wrapper_get_instance_by_uri($uri);
+  unset ($uri);
+  $realpath = $realpath->realpath();
+  $handle = fopen($realpath, 'w');
+  fwrite($handle, time());
+  fclose($handle);
+  unset ($handle);
+}
+
+/**
+ * Check time of the cache
+ *
+ * @param string $path
+ *   Path of request URL
+ *
+ * @return string
+ *   path of the uri if successfull, or NULL if otherwise
+ */
+function dncsystem_check_cache_time($path) {
+  $directory = dncsystem_prepare_cache_directory($path);
+  $uri = $directory . '/timecreation.txt';
+  unset ($directory);
+  $realpath = file_stream_wrapper_get_instance_by_uri($uri);
+  $realpath = $realpath->realpath();
+  clearstatcache();
+  if (!is_file($realpath)) {
+    unset ($realpath, $uri, $directory);
+    return;
+  }
+  $handle = fopen($realpath, 'r');
+  unset ($realpath);
+  $timecreation = NULL;
+  while(!feof($handle)) {
+    $buffer = fgets($handle, 1024);
+    $timecreation = trim($buffer);
+    unset ($buffer);
+    break;
+  }
+  fclose($handle);
+  unset($handle);
+  if (empty($timecreation)) {
+    unset ($timecreation, $realpath, $uri);
+    return;
+  }
+  settype($timecreation, 'int');
+  $duration = time() - $timecreation;
+  unset ($timecreation);
+  if ($duration > (60 * 20)) {
+    unset ($uri, $duration);
+    return;
+  }
+  unset ($duration);
+  dncsystem_set_cache_time($path);
+  return $uri;
+}
+
+/**
+ * Filling the cache directory
+ *
+ * @param string $path
+ *   Requested URL path
+ * @param string $filename
+ *   Name of cache file
+ * @param string $string
+ *   String that will be filled to the cache
+ * @param string $dirname
+ *   Name of directory if any
+ * @param boolean $replace
+ *   Whether this action will replacing the old or not
+ */
+function dncsystem_cache_directory_fill($path, $filename, $string, $dirname = NULL, $replace = TRUE) {
+  dncsystem_set_cache_time($path);
+  $directory = dncsystem_prepare_cache_directory($path);
+  $directory .= empty($dirname) ? NULL : '/' . $dirname;
+  file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
+  $uri = $directory . '/' . $filename;
+  unset ($maindir);
+  $realpath = file_stream_wrapper_get_instance_by_uri($uri);
+  unset ($uri);
+  $realpath = $realpath->realpath();
+  clearstatcache();
+  $prefix = empty($replace) ? (!is_file($realpath) ? NULL : "\n") : NULL;
+  $attr = empty($replace) ? 'a+' : 'w';
+  $handle = fopen($realpath, $attr);
+  fwrite($handle, $prefix . $string);
+  fclose($handle);
+  unset ($handle, $prefix, $attr);
+}
+
+/**
+ * Delete folder or directory recursively
+ *
+ * @param string $filename
+ *   Name of targeted file or directory
+ */
+function dncsystem_delete_directory($filename) {
+  clearstatcache();
+  if (is_dir($filename)) {
+    $lists = scandir($filename);
+    foreach($lists as $values) {
+      if ($values != '.' && $values != '..') {
+        dncsystem_delete_directory($filename . '/' . $values);
+      }
+    }
+    unset ($lists);
+    rmdir($filename);
+  }
+  else {
+    clearstatcache();
+    if (is_file($filename)) {
+      unlink($filename);
+    }
+  }
+}
+
+/**
+ * Cache drop action function
+ *
+ * @param string $path
+ *   Given path that appropriate to the cache
+ */
+function dncsystem_drop_cache($path) {
+  $directory = dncsystem_prepare_cache_directory($path);
+  $directory = file_stream_wrapper_get_instance_by_uri($directory);
+  $directory = $directory->realpath();
+  dncsystem_delete_directory($directory);
+  unset ($directory);
+}
+
+/**
+ * Read cache by given path
+ *
+ * @param string $path
+ *   Targeted path of the cache
+ * @param string $filename
+ *   Name of file, NULL if the new one
+ * @param string $dirname
+ *   Name of directory or folder
+ * @param boolean $all
+ *   Whether the output is displaying all result or not
+ *
+ * @return array
+ *   Result array of the cache or NULL if not found
+ */
+function dncsystem_read_cache($path, $filename = NULL, $dirname = NULL, $all = FALSE) {
+  $check = dncsystem_check_cache_time($path);
+  if (empty($check)) {
+    unset ($check);
+    dncsystem_drop_cache($path);
+    return;
+  }
+  unset ($check);
+
+  $directory = dncsystem_prepare_cache_directory($path);
+  $directory .= (empty($dirname) ? NULL : '/' . $dirname) . (empty($filename) ? NULL : '/' . $filename);
+  $directory = file_stream_wrapper_get_instance_by_uri($directory);
+  $directory = $directory->realpath();
+  clearstatcache();
+  if (!is_file($directory) && !is_dir($directory)) {
+    unset ($directory);
+    return;
+  }
+
+  $return = array();
+  if (is_dir($directory)) {
+    $result = scandir($directory);
+    if (!empty($result)) {
+      foreach ($result as $keys => $values) {
+        if ($values != '.' && $values != '..' && $values != 'timecreation.txt'){
+          if (is_dir($directory . '/' . $values)) {
+            $folder = (empty($dirname) ? NULL : $dirname) . '/' . $values;
+            $return[$values] = empty($all) ? $values : dncsystem_read_cache($path, $filename, $folder, $all);
+            unset ($folder);
+          }
+          else {
+            $handle = fopen($directory . '/' . $values, 'r');
+            while(!feof($handle)) {
+              $buffer = fgets($handle);
+              $buffer = trim($buffer);
+              if (!empty($buffer)) {
+                $return[$values] = dncsystem_unserialize($buffer);
+              }
+              unset ($buffer);
+            }
+            fclose($handle);
+            unset ($handle);
+          }
+        }
+      }
+    }
+    unset ($result, $directory);
+    return $return;
+  }
+
+  $handle = fopen($directory, 'r');
+  while(!feof($handle)) {
+    $buffer = fgets($handle);
+    $return[] = trim($buffer);
+    unset ($buffer);
+  }
+  fclose($handle);
+  unset ($handle);
+  return empty($return) ? NULL : (count($return) < 2 ? $return[0] : $return);
+}
+
+/**
+ * Count quantity of week in given year
+ *
+ * @param integer $year
+ *   Year with integer formatted ('YYYY')
+ *
+ * @return integer
+ *   Quantity of the weeks
+ */
+function dncsystem_count_iso_weeks_in_year($year) {
+  $date = new DateTime;
+  $date->setISODate($year, 53);
+  return ($date->format("W") === "53" ? 53 : 52);
+}
+
+/**
+ * Converting float format to integer
+ *
+ * @param float $float
+ *   the request float
+ *
+ * @return integer
+ *   Integer result
+ */
+function dncsystem_intpart($float) {
+  if ($float < -0.0000001)
+    return ceil($float - 0.0000001);
+  else
+    return floor($float + 0.0000001);
+}
+
+/**
+ * Gregorian date to hijr date conversion
+ * example dncsystem_greghijri(11, 6, 2016) = 1437-09-06 in hijr
+ *
+ * @param int $day
+ *   day info
+ * @param int $month
+ *   month info
+ * @param int $year
+ *   year info
+ * @param boolean $string
+ *   whether the output in string formatted or iso date formatted
+ * @param boolean $long
+ *   whether the output in long formatted or not
+ * @param boolean $idformat
+ *   whether the output in id (indonesian) format or not
+ *
+ * @return string
+ *   string date in hijr
+ */
+function dncsystem_greg2hijri($day, $month, $year, $string = FALSE, $long = FALSE, $idformat = FALSE) {
+  $day   = (int) $day;
+  $month = (int) $month;
+  $year  = (int) $year;
+
+  if (($year > 1582) || (($year == 1582) && ($month > 10)) || (($year == 1582) && ($month == 10) && ($day > 14))) {
+    $jd = dncsystem_intpart((1461 * ($year + 4800 + dncsystem_intpart(($month - 14) / 12))) / 4) + dncsystem_intpart((367 * ($month - 2 - 12 * (dncsystem_intpart(($month - 14) / 12)))) / 12) -
+    dncsystem_intpart( (3 * (dncsystem_intpart(($year + 4900 + dncsystem_intpart(($month - 14) / 12)) / 100))) / 4) + $day - 32075;
+  }
+  else {
+    $jd = 367 * $year - dncsystem_intpart((7 * ($year + 5001 + dncsystem_intpart(($month - 9) / 7))) / 4) + dncsystem_intpart((275 * $month) / 9) + $day + 1729777;
+  }
+
+  $l = $jd - 1948440 + 10632;
+  $n = dncsystem_intpart(($l - 1) / 10631);
+  $l = $l - 10631 * $n + 354;
+  $j = (dncsystem_intpart((10985 - $l) / 5316)) * (dncsystem_intpart((50 * $l) / 17719)) + (dncsystem_intpart($l / 5670)) * (dncsystem_intpart((43 * $l) / 15238));
+  $l = $l - (dncsystem_intpart((30 - $j) / 15)) * (dncsystem_intpart((17719 * $j) / 50)) - (dncsystem_intpart($j / 16)) * (dncsystem_intpart((15238 * $j) / 43)) + 29;
+
+  $month = dncsystem_intpart((24 * $l) / 709);
+  $day   = $l - dncsystem_intpart((709 * $month) / 24);
+  $year  = 30 * $n + $j - 30;
+
+  $date = array();
+  $date['year']  = $year;
+  $date['month'] = $month;
+  $date['day']   = $day;
+
+  $hijriMonth = array(
+    "Muharram",
+    "Safar",
+    "Rabīul-Awwal",
+    "Rabīuth-Thānī",
+    "Jumādāl-Ula",
+    "Jumādā ath-Thāniya",
+    "Rajab",
+    "Sya'ban",
+    "Ramadhan",
+    "Syawwal",
+    "Dhūl-Qa'da",
+    "Dhūl-Hijjah"
+  );
+
+  if (!$string)
+    return $date;
+  else
+    return (empty($idformat) ? $year : $day) . (!empty($long) ? ' ' . $hijriMonth[$month - 1] . ' ' : '-' . $month . '-') . (empty($idformat) ? $day : $year);
+
+//  $hijriDate = Greg2Hijri(date("d"), date("m"), date("Y"));
+//  $year = $hijriDate["year"];
+//  $month = $hijriMonth[$hijriDate["month"]-1];
+//  $day = $hijriDate["day"];
+}
+
+/**
+ *
+ * @param type $month
+ * @return type
+ */
+function dncsystem_get_hijr_month($month = NULL) {
+//  $hijriMonth = array(
+//    "Muharram",
+//    "Safar",
+//    "Rabīul-Awwal",
+//    "Rabīuth-Thānī",
+//    "Jumādāl-Ula",
+//    "Jumādā ath-Thāniya",
+//    "Rajab",
+//    "Sya'ban",
+//    "Ramadhan",
+//    "Syawwal",
+//    "Dhūl-Qa'da",
+//    "Dhūl-Hijjah"
+//  );
+
+  $hijriMonth = array(
+    "Muharram",
+    "Safar",
+    "Rabiul-Awwal",
+    "Rabiuth-Tsanī",
+    "Jumadil-Ula",
+    "Jumada ath-Tsaniya",
+    "Rajab",
+    "Sya'ban",
+    "Ramadhan",
+    "Syawwal",
+    "Dzul-Qa'da",
+    "Dzul-Hijjah"
+  );
+  return empty($month) ? $hijriMonth : $hijriMonth[$month - 1];
+}
+
+/**
+ * Conversion interface in human readable format input
+ * e.g. dncsystem_tohijri(2016-06-11) = 1437-09-06 in hijr
+ *
+ * @param string $date
+ *   string date in iso formatted date
+ *
+ * @return string
+ *   string date in hijr
+ */
+function dncsystem_tohijri($date) {
+  return dncsystem_greg2hijri(date('d', strtotime($date)), date('m', strtotime($date)), date('Y', strtotime($date)), TRUE, TRUE, TRUE);
+}
+
+/**
+ * Reset admin password in default (12345)
+ *
+ * @return string
+ *   string default password
+ */
+function dncsystem_reset_admin_password() {
+  return;
+  require_once DRUPAL_ROOT . '/includes/password.inc';
+  $newhash = user_hash_password('12345');
+  $updatepass = db_update('users')
+          ->fields(array('pass' => $newhash))
+          ->condition('uid', 1, '=')
+          ->execute();
+  return $updatepass;
+}
+
+/**
+ * Converting date_popup granularity to date_format
+ * Allows developers to take advantage of
+ * the configuration of the user's selection
+ * 'year' => Y
+ * 'month' => m
+ * 'day' => d
+ * 'hour' => h
+ * 'minute' => i
+ * 'seond' => s
+ *
+ * @param array $granularity
+ *   granularity in the the field setting
+ *   selected by users
+ *
+ * @return string
+ *   date format string e.g. Y-m-d H:i:s
+ */
+function dncsystem_granularity_to_date_format(array $granularity = array()) {
+  if (empty($granularity)) {
+    return;
+  }
+  $symbols = array(
+    'date' => array(
+      array(
+        'mean' => 'year', 'symbol' => 'Y',
+      ),
+      array(
+        'mean' => 'month', 'symbol' => 'm',
+      ),
+      array(
+        'mean' => 'day', 'symbol' => 'd',
+      ),
+    ),
+    'hour' => array(
+      array(
+        'mean' => 'hour', 'symbol' => 'H',
+      ),
+      array(
+        'mean' => 'minute', 'symbol' => 'i',
+      ),
+      array(
+        'mean' => 'second', 'symbol' => 's',
+      ),
+    ),
+  );
+  $return = array();
+  foreach ($symbols as $keys => $values) {
+    ${$keys} = array();
+    foreach ($values as $value) {
+      if (!empty($granularity[$value['mean']])) {
+        ${$keys}[] = $value['symbol'];
+      }
+    }
+    ${$keys} = implode(($keys == 'date' ? '-' : ':'), ${$keys});
+    if (!empty(${$keys})) {
+      $return[] = ${$keys};
+    }
+    unset (${$keys});
+  }
+  return implode(' ', $return);
+}
+
+/**
+ * Count age from the given date of birth
+ *
+ * @param string $birthdate
+ *   date of birth
+ * @param boolean $withmonth
+ *   flag whether show counted month information or not
+ * @param boolean $shortsign
+ *   flag whether suffix sign will show in short phrase or not
+ *   e.g. yr. for year, mth. for month
+ *
+ * @return null|string
+ *   string age info
+ */
+function dncsystem_count_age($birthdate, $withmonth = FALSE, $shortsign = FALSE, $justnumeric = FALSE) {
+  $strtime = strtotime($birthdate);
+  if ($strtime >= time()) {
+    unset ($strtime);
+    return NULL;
+  }
+  $date = date('Y-n-j', $strtime);
+  unset ($strtime);
+  list($year, $month, $day) = explode('-', $date);
+  unset ($date, $day);
+  $now = date('Y-n-j', time());
+  list($yearnow, $monthnow, $daynow) = explode('-', $now);
+  unset ($now, $daynow);
+
+  $type = 'int';
+  settype($year, $type);
+  settype($month, $type);
+  settype($yearnow, $type);
+  settype($monthnow, $type);
+  unset ($type);
+  $result = (($yearnow - $year) * 12) - (12 - ((12 - $month) + $monthnow));
+  if (!empty($justnumeric)) {
+    $result = round($result / 12, 1);
+  }
+  else {
+    $result = floor($result / 12) . ' ' . (empty($shortsign) ? t('year') : t('yr.')) . ($withmonth !== FALSE && $result % 12 > 0 ? ' ' . ($result % 12) . ' ' . (empty($shortsign) ? t('month') : t('mth.')) : NULL);
+  }
+  unset ($year, $yearnow, $month, $monthnow);
+  return $result;
+}
+
+/**
+ * Displaying image in circle frame
+ *
+ * @param string $show
+ *   image url that will show in html
+ * @param string $real
+ *   image url that be targeted link
+ * @param boolean $center
+ *   set cropping action in center of the image or not
+ *
+ * @return string
+ *   html tag to display di circle image
+ */
+function dncsystem_circle_image($show, $real, $center = FALSE, array $pixels = array()) {
+  $width = empty($pixel['width']) ? '70px' : $pixel['width'];
+  $height = empty($pixel['height']) ? '70px' : $pixel['height'];
+  drupal_add_css(
+    '
+      #dncthumbnail {
+        position: relative;
+        display: inline-block;
+        width: ' . $width . ';
+        height: ' . $height . ';
+        overflow: hidden;
+        border-radius: 50%;
+        box-shadow: 0 3px 5px 0 rgba(0, 0, 0, .8);
+        -webkit-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, .8);
+        -moz-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, .8);
+      }
+
+      #dncthumbnail .dncimg-circle {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        height: auto;
+        width: 100%;
+        -webkit-transform: translate(-50%,-50%);
+            -ms-transform: translate(-50%,-50%);
+                transform: translate(-50%,-50%);
+      }
+
+      #dncthumbnail0 {
+      }
+
+      #dncthumbnail0 .dnccircular--landscape {
+        display: inline-block;
+        position: relative;
+        width: ' . $width . ';
+        height: ' . $height . ';
+        overflow: hidden;
+        border-radius: 50%;
+        box-shadow: 0 3px 5px 0 rgba(0, 0, 0, .8);
+        -webkit-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, .8);
+        -moz-box-shadow: 0 3px 5px 0 rgba(0, 0, 0, .8);
+      }
+
+      #dncthumbnail0 .dnccircular--landscape img{
+        width: auto;
+        height: 100%;
+        margin-left: -30%;
+        max-width: none;
+      }
+
+    ',
+    'inline'
+  );
+  return '
+    <div id="dncthumbnail' . (!empty($center) ? '0' : NULL) . '">
+      ' . (!empty($center) ? '<div class="dnccircular--landscape">' : NULL) . '
+      <a href="' . $real . '" target="_blank">
+        ' . (!empty($center) ?
+          '<img src="' . $show . '">' :
+          '<img src="' . $show . '" class="dncimg-circle">
+          ') . '
+      </a>
+      ' . (!empty($center) ? '</div>' : NULL) . '
+    </div>
+  ';
+}
+
+function dncsystem_isValidUrl($url) {
+  $url = parse_url($url);
+  if (!isset($url["host"])) return false;
+  return !(gethostbyname($url["host"]) == $url["host"]);
+}
+
+function dncsystem_get_integer_in_string($string) {
+  $string = explode(' ', $string);
+  if (empty($string)) {
+    return;
+  }
+  $return = array();
+  foreach ($string as $values) {
+    preg_match('/\d+/', $values, $integer);
+    if (!empty($integer[0])) {
+      settype($integer[0], 'int');
+      $return[] = $integer[0];
+    }
+    unset ($integer);
+  }
+  return empty($return) ? NULL : $return;
+}
+
+function dncsystem_get_month_refs($month = NULL) {
+  $months = array(
+    1 => t('January'),
+    2 => t('February'),
+    3 => t('March'),
+    4 => t('April'),
+    5 => t('May'),
+    6 => t('June'),
+    7 => t('July'),
+    8 => t('August'),
+    9 => t('September'),
+    10 => t('October'),
+    11 => t('November'),
+    12 => t('December'),
+  );
+  return empty($month) ? $months : (empty($months[$month]) ? NULL : $months[$month]);
+}
+
+function dncsystem_move_uploaded_file($file, $dirname, $destname) {
+  // Prepare directory
+  $directory = variable_get('file_default_scheme', 'public') . '://' . $dirname;
+  file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
+  $destination = file_stream_wrapper_uri_normalize($directory . '/' . $destname);
+  $return = file_move($file, $destination, FILE_EXISTS_REPLACE);
+  unset ($destination);
+  $return->filename = $destname;
+  return $return;
+}
+
+function dncsystem_excel_to_array($file, $format, $sheetname) {
+  $libraries = libraries_get_libraries();
+  if (empty($libraries['phpexcel'])) {
+    unset ($libraries);
+    $messages = array();
+    $messages[] = t('No PHPExcel libraries found :(');
+    $messages[] = t('You can download first this module in') . ' ' . l(t('here'), 'http://www.codeplex.com/PHPExcel', array('external' => TRUE));
+    $messages = implode('<br />', $messages);
+    drupal_set_message($messages, 'error', FALSE);
+    unset ($messages);
+    return;
+  }
+  require_once $libraries['phpexcel'] . '/Classes/PHPExcel/IOFactory.php';
+  unset ($libraries);
+  $fileType = $format;
+  $fileName = $file;
+  $objReader = PHPExcel_IOFactory::createReader($fileType);
+//  $worksheets = $objReader->listWorksheetNames($fileName);
+  $objReader->setReadDataOnly(true);
+  $objReader->setLoadSheetsOnly($sheetname);
+  $objPHPExcel = $objReader->load($fileName);
+  $sheetData = $objPHPExcel->getActiveSheet()->toArray(null,true,true,true);
+  if (empty($sheetData)) {
+    unset ($sheetData);
+    return;
+  }
+  unset ($objPHPExcel, $objReader, $fileName, $fileType);
+  return $sheetData;
+}
+
+function dncsystem_pager_array_splice($data, $limit = 9, $element = 0) {
+  global $pager_page_array, $pager_total, $pager_total_items;
+  $page = isset($_GET['page']) ? $_GET['page'] : '';
+
+  // Convert comma-separated $page to an array, used by other functions.
+  $pager_page_array = explode(',', $page);
+
+  // We calculate the total of pages as ceil(items / limit).
+  $pager_total_items[$element] = count($data);
+  $pager_total[$element] = ceil($pager_total_items[$element] / $limit);
+  $pager_page_array[$element] = max(0, min((int)$pager_page_array[$element], ((int)$pager_total[$element]) - 1));
+  return array_slice($data, $pager_page_array[$element] * $limit, $limit, TRUE);
+}
+
+function dncsystem_check_arrays_element_differences($data, $comparison) {
+  // convert array element to strings
+  $data = serialize($data);
+  $comparison = serialize($comparison);
+  return $data != $comparison ? TRUE : FALSE;
+}
+
+function dncsystem_serve_file_download($files, $archiveName = 'attachments.zip', $type = 'application/zip', $dropafter=FALSE) {
+  if (is_null($files) || count($files) < 1 || (is_string($files) && trim($files) == '')) {
+    return NULL;
+  }
+
+  if (is_string($files)) {
+    $files = array($files);
+  }
+
+  drupal_add_http_header('Pragma', 'public');
+  drupal_add_http_header('Expires', '0');
+  drupal_add_http_header('Cache-Control', 'must-revalidate, post-check=0, pre-check=0');
+
+  if ($type == 'aplication/zip' || count($files) > 1) {
+    $temp_path = realpath(file_directory_temp());
+    $archiveName = $temp_path . DIRECTORY_SEPARATOR . $archiveName;
+
+    $zip = new ZipArchive();
+    if ($zip->open($archiveName, ZIPARCHIVE::CREATE) !== TRUE) {
+      drupal_set_message(t('Cannot open @archive !', array('@archive' => basename($archiveName))));
+      return NULL;
+    }
+    foreach ($files as $value) {
+      $zip->addFile($value, basename($value));
+    }
+    $zip->close();
+
+    drupal_add_http_header('Content-Type', 'application/zip');
+  }
+  else {
+    $archiveName = $files[0];
+    drupal_add_http_header('Content-Type', $type);
+  }
+
+  drupal_add_http_header('Content-Disposition', 'attachment; filename=' . basename($archiveName) . ';');
+  drupal_add_http_header('Content-Transfer-Encoding', 'binary');
+  drupal_add_http_header('Content-Length', filesize($archiveName));
+  readfile($archiveName);
+  if ($type == 'aplication/zip' || count($files) > 1 || $dropafter !== FALSE) {
+    unlink($archiveName);
+  }
+
+  drupal_exit();
+}
+
+function dncsystem_compress_folder_to_zip($source, $destination) {
+  if (!extension_loaded('zip') || !file_exists($source)) {
+    return;
+  }
+
+  $zip = new ZipArchive();
+  if (!$zip->open($destination, ZIPARCHIVE::CREATE)) {
+    return;
+  }
+
+  $source = str_replace('\\', '/', realpath($source));
+
+  if (is_dir($source) === TRUE) {
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source), RecursiveIteratorIterator::SELF_FIRST);
+
+    foreach ($files as $file) {
+      $file = str_replace('\\', '/', $file);
+
+      // Ignore "." and ".." folders
+      if (in_array(substr($file, strrpos($file, '/')+1), array('.', '..'))) {
+        continue;
+      }
+
+      $file = realpath($file);
+
+      if (is_dir($file) === TRUE) {
+        $zip->addEmptyDir(str_replace($source . '/', '', $file . '/'));
+      } elseif (is_file($file) === TRUE) {
+        $zip->addFromString(str_replace($source . '/', '', $file), file_get_contents($file));
+      }
+    }
+  } elseif (is_file($source) === TRUE) {
+    $zip->addFromString(basename($source), file_get_contents($source));
+  }
+
+  $zip->close();
+  return TRUE;
+}
+
+function dncsystem_extract_zip_data($uri) {
+  $path = pathinfo(drupal_realpath($uri), PATHINFO_DIRNAME);
+  $zip = new ZipArchive;
+  $res = $zip->open(drupal_realpath($uri));
+  if ($res !== TRUE) {
+    unset ($path, $zip, $res);
+    return;
+  }
+  unset ($res);
+  $zip->extractTo($path);
+  $zip->close();
+  unset ($path);
+  return TRUE;
+}
+
+function dncsystem_array_sort($a, $b) {
+  if (isset($a['weight']) && $b['weight']) {
+    return $a['weight'] < $b['weight'] ? -1 : 1;
+  }
+  return 0;
+}
+
+function dncsystem_abjad($key = NULL) {
+  $return = array(
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'x', 'y', 'z'
+  );
+  return is_null($key) ? $return : (!isset($return[$key]) ? NULL : $return[$key]);
+}
+
+function dncsystem_sanitize_title($text) {
+  $text = check_plain($text);
+  $text = trim($text);
+  if (empty($text) || $text == '') {
+    return;
+  }
+  $dump = explode(' ', $text);
+  if (!empty($dump)) {
+    $text = array();
+    foreach ($dump as $values) {
+      if (!empty($values) && $values != '') {
+        $text[] = $values;
+      }
+    }
+    unset ($dump);
+    if (empty($text)) {
+      return;
+    }
+    return implode(' ', $text);
+  }
+  unset ($dump);
+}
+
+function dncsystem_server_is_available($uri) {
+  $domain = dncsystem_get_hostname_by_url($uri, FALSE);
+  $ip = gethostbyname($domain);
+  if ($ip == $domain) {
+    unset ($ip, $domain);
+    return;
+  }
+  $result = exec("ping -c 1 -s 64 -t 64 " . $domain);
+  unset ($domain, $ip);
+  if (empty($result) || preg_match('/unknown host/i', $result)) {
+    unset ($result);
+    return;
+  }
+  unset ($result);
+  return TRUE;
+}

@@ -1,0 +1,9 @@
+; $Id: dncfilewrapper.info,v 0.1 2018/3/22 10:18:46 denic Exp $
+name = DNC File Wrapper
+description = "DNC's system to handle file access and manipulating"
+dependencies[] = dncsystem
+dependencies[] = libraries
+package = DNC System
+version = 7.x-0.1-dev
+core = 7.x
+

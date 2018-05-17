@@ -1,0 +1,186 @@
+<?php
+
+define ('DNCSOUNDOFTEXT_SERVICE_PATH', 'https://soundoftext.com/api');
+define ('DNCSOUNDOFTEXT_SOUNDS_PATH', 'sounds');
+
+function dncsoundoftext_check_state() {
+  $domain = DNCSOUNDOFTEXT_SERVICE_PATH;
+  $curlInit = curl_init($domain);
+  curl_setopt($curlInit,CURLOPT_CONNECTTIMEOUT,10);
+  curl_setopt($curlInit,CURLOPT_HEADER,true);
+  curl_setopt($curlInit,CURLOPT_NOBODY,true);
+  curl_setopt($curlInit,CURLOPT_RETURNTRANSFER,true);
+
+  //get answer
+  $response = curl_exec($curlInit);
+
+  curl_close($curlInit);
+  if ($response) return TRUE;
+
+  return FALSE;
+  unset ($domain);
+}
+
+function dncsoundoftext_get_language() {
+  $available = array(
+    'en' => 'en-US',
+    'id' => 'id-ID',
+  );
+  $default = language_default('language');
+  return empty($available[$default]) ? $available['en'] : $available[$default];
+}
+
+function dncsoundoftext_send_request($data = NULL, $id = NULL) {
+  $check = dncsoundoftext_check_state();
+  watchdog('checkServer', '<pre>@print</pre>', array('@print' => print_r($check, TRUE)));
+  if (empty($check)) {
+    unset ($check);
+    return;
+  }
+  unset ($check);
+
+  $targetURL = DNCSOUNDOFTEXT_SERVICE_PATH . '/' . DNCSOUNDOFTEXT_SOUNDS_PATH;
+
+  $options = [];
+  if (!empty($data)) {
+    $options['headers']['Content-Type'] = 'application/json';
+    $options['data'] = $data;
+  }
+  else {
+    if (!empty($id)) {
+      $targetURL .= '/' . $id;
+    }
+  }
+  $options['method'] = empty($data) ? 'GET' : 'POST';
+  watchdog('preparing', '<pre>@print</pre>', array('@print' => print_r(array($targetURL, $options), TRUE)));
+  // echo '<pre>'; print_r(array($targetURL, $options)); echo '</pre>'; exit;
+
+  $response = drupal_http_request($targetURL, $options);
+  unset ($targetURL, $options);
+  watchdog('response', '<pre>@print</pre>', array('@print' => print_r($response, TRUE)));
+  // echo '<pre>'; print_r($response); echo '</pre>'; exit;
+  if ($response->code == 200) {
+    /* delete legacy file */
+    $result = json_decode($response->data, TRUE);
+    return $result;
+  }
+  unset ($response);
+  return;
+}
+
+function dncsoundoftext_get_sound_id($text) {
+  $data = [];
+  $data['engine'] = 'Google';
+  $data['data']['text'] = $text;
+  $data['data']['voice'] = dncsoundoftext_get_language();
+  $data = json_encode($data);
+  // watchdog('sounddataid', '<pre>@print</pre>', array('@print' => print_r($data, TRUE)));
+  $result = dncsoundoftext_send_request($data);
+  unset ($data);
+  if (empty($result['id'])) {
+    unset ($result);
+    return;
+  }
+  return $result['id'];
+}
+
+function dncsoundoftext_get_sound_path($id) {
+  if (empty($id)) {
+    return;
+  }
+
+  $result = dncsoundoftext_send_request(NULL, $id);
+  if (empty($result['location'])) {
+    if ($result != 'Pending') {
+      return;
+    }
+    return 1;
+  }
+  return $result['location'];
+}
+
+function dncsoundoftext_play_text($text) {
+  $text = check_plain($text);
+  $text = htmlspecialchars_decode($text);
+  $text = strip_tags($text);
+  if (empty($text)) {
+    return;
+  }
+  $text = truncate_utf8($text, 200, TRUE);
+  watchdog('trtext', '@text', array('@text' => $text));
+
+  // get id
+  $id = dncsoundoftext_get_sound_id($text);
+  watchdog('trid', '@text', array('@text' => $id));
+  if (empty($id)) {
+    unset ($id);
+    return;
+  }
+
+  $path = dncsoundoftext_get_sound_path($id);
+  watchdog('trpath', '@text', array('@text' => $path));
+  if (empty($path)) {
+    unset ($path, $id);
+    return;
+  }
+  $step = 0;
+  while ($path == 1) {
+    sleep(4);
+    $step ++;
+    if ($step > 2) {
+      $path = 0;
+      break;
+    }
+    $path = dncsoundoftext_get_sound_path($id);
+  }
+  unset ($id);
+  // echo '<pre>'; print_r($result); echo '</pre>'; exit;
+  if (empty($path)) {
+    unset ($path, $id);
+    return;
+  }
+  watchdog('pathresult', '@path', array('@path' => $path));
+
+  $output = '<audio autoplay>';
+  $output .= '<source src="' . $path . '" type="audio/mpeg">';
+  $output .= '</audio>';
+  unset ($path);
+  print ($output);
+}
+
+function dncsoundoftext_play_message() {
+  $messages = drupal_get_messages(NULL, FALSE);
+  if (!empty($messages)) {
+    $message = NULL;
+    foreach ($messages as $keys => $values) {
+      foreach ($values as $value) {
+        $message .= (!empty($space) ? ' ' : NULL) . $value;
+        $space = TRUE;
+      }
+    }
+    unset ($space);
+    dncsoundoftext_play_text($message);
+    unset ($message);
+  }
+  unset ($messages);
+}
+
+function dncsoundoftext_preprocess_status_messages() {
+  if (!empty($_SESSION['messages'])) {
+    $message = [];
+    foreach ($_SESSION['messages'] as $keys => $values) {
+      if (!empty($values)) {
+        foreach($values as $key => $value) {
+          $message[] = $value;
+        }
+      }
+    }
+    $message = implode(' ', $message);
+    dncsoundoftext_play_text($message);
+    unset ($message);
+  }
+}
+
+// function dncsoundoftext_init() {
+//   dncsoundoftext_play_message();
+// }

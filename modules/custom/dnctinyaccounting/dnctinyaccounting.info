@@ -1,0 +1,8 @@
+; $Id: dnctinyaccounting.info,v 0.1 2018/5/10 19:01:36 denic Exp $
+name = DNC Tiny Accounting
+description = "DNC's system to handle simple tiny accounting management"
+dependencies[] = dncsystem
+dependencies[] = dncfilewrapper
+package = DNC System
+version = 7.x-0.1-dev
+core = 7.x

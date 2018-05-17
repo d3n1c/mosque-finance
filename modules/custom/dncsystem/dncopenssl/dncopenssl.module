@@ -1,0 +1,470 @@
+<?php
+
+// $Id: dncopenssl, v 0.1.0.0 Apr 5, 2014 6:12:04 AM denic Exp $
+
+/*
+ *  @file
+ *  install file for dncopenssl
+ *
+ *  Copyright (c) 2013 Denic Wibowo<denicwibowo@gmail.com>.
+ *  All rights reserved.
+ *
+ *  This program is free software; you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the
+ *  Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful, but
+ *  WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+ *  Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *
+ *  dncopenssl.module
+ *
+ *  Created on Apr 5, 2014, 6:12:04 AM
+ */
+
+/**
+ * Implementation of hook_load
+ *  @return arg
+ **/
+function dncopenssl_load($arg) {
+  return $arg;
+}
+
+/**
+ * Menu of DNC's Openssl
+ * @return items of menus
+ */
+function dncopenssl_menu() {
+  $base = array(
+    'access callback' => 'user_access',
+    'access arguments' => array('administer dnc system'),
+    'file' => 'dncopenssl.admin.inc'
+  );
+
+  $items = array();
+
+  $items['admin/config/dncsystem/openssl'] = array(
+    'title' => t('Openssl Encryption'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncopenssl_params_configuration'),
+    'description' => t('Configure some parameters for openssl encryption'),
+    'type' => MENU_NORMAL_ITEM,
+  ) + $base;
+  $items['admin/structure/dncsystem/dncopenssl'] = array(
+    'title' => 'Client\'s Public Keys',
+    'description' => 'List of client\'s public keys that served by it\'s server',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncopenssl_clients'),
+  ) + $base;
+  $items['admin/structure/dncsystem/dncopenssl/add'] = array(
+    'title' => 'Add Public Keys',
+    'description' => 'Add client\'s public key that served by it\'s server',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncopenssl_clients_add'),
+    'type' => MENU_LOCAL_ACTION,
+  ) + $base;
+  $items['admin/structure/dncsystem/dncopenssl/%dncopenssl'] = array(
+    'title' => 'Detail Public Keys',
+    'description' => 'Detail of client\'s public key that served by it\'s server',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncopenssl_clients_edit'),
+  ) + $base;
+  $items['dncopenssl/createkey'] = array(
+    'title' => t('Secret Key Creation'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncopenssl_create_secret_key'),
+    'description' => t('Create openssl secret key for the first time'),
+    'type' => MENU_CALLBACK,
+  ) + $base;
+  $items['dncopenssl/publickey'] = array(
+    'title' => t('Public Key'),
+    'page callback' => 'dncopenssl_show_public_key',
+    'description' => t('Show it DNC system\'s openssl public key'),
+    'type' => MENU_CALLBACK,
+    'access callback' => TRUE,
+  );
+
+  unset ($base);
+  return $items;
+}
+
+/**
+ *
+ * @global type $base_url
+ * @return type
+ */
+function dncopenssl_get_public_key() {
+  global $base_url;
+  // $domain = parse_url($base_url, PHP_URL_HOST);
+  $domain = variable_get('dncopenssl_privat_name');
+  $path = variable_get('dncopenssl_key_path');
+  $keyfile = $path . DIRECTORY_SEPARATOR . $domain . '_public.key';
+  unset ($domain, $path);
+  // print_r(array($keyfile)); exit;
+  clearstatcache();
+  if (!is_file($keyfile)) {
+    unset ($keyfile);
+    return;
+  }
+  $result = file_get_contents($keyfile);
+  unset ($keyfile);
+  if (empty($result)) {
+    unset ($result);
+    return;
+  }
+  return base64_encode($result);
+}
+
+/**
+ *
+ * @global type $base_url
+ * @return type
+ */
+function dncopenssl_get_private_key() {
+  $path = variable_get('dncopenssl_key_path');
+  if (empty($path)) {
+    unset ($path);
+    return;
+  }
+  global $base_url;
+  // $domain = parse_url($base_url, PHP_URL_HOST);
+  $domain = variable_get('dncopenssl_privat_name');
+  $secret = $path . DIRECTORY_SEPARATOR . $domain . '.key';
+  unset ($domain, $path);
+  clearstatcache();
+  if (!is_file($secret)) {
+    unset($secret);
+    return;
+  }
+  $secret = file_get_contents($secret);
+  if (empty($secret)) {
+    unset ($secret);
+    return;
+  }
+  return base64_encode($secret);
+}
+
+/**
+ *
+ */
+function dncopenssl_show_public_key() {
+  $publicKey = dncopenssl_get_public_key();
+  if (!empty($publicKey)) {
+    echo '<div style="width: 100%; word-wrap: break-word">'; print($publicKey); echo '</div>'; exit;
+  }
+  drupal_set_message(t('Sorry, we don\'t have any public key yet, contact site administrator for your need, please...'), 'warning', FALSE);
+  drupal_goto(drupal_get_path_alias('<front>'));
+}
+
+/**
+ *
+ * @param type $data
+ * @return type
+ */
+function dncopenssl_update_register($data) {
+  if (empty($data)) {
+    return;
+  }
+  $getfields = drupal_schema_fields_sql('dncopenssl');
+  $record = new stdClass();
+  foreach ($data as $key => $value) {
+    if (in_array($key, $getfields)) {
+      $record->$key = $value;
+    }
+  }
+  unset ($getfields);
+  if (empty($record->clientID) && !empty($data['source_clientID'])) {
+    $record->clientID = $data['source_clientID'];
+  }
+
+  $getdata = dncopenssl_get_client_data($record->clientID);
+  if (!empty($getdata)) {
+    drupal_write_record('dncopenssl', $record, 'clientID');
+  }
+  else {
+    drupal_write_record('dncopenssl', $record);
+  }
+  unset ($record, $getdata);
+}
+
+/**
+ *
+ * @param type $message
+ * @param type $pubkey
+ * @return type
+ */
+function dncopenssl_nonsealed_encrypt($message, $pubkey) {
+  $password = md5(rand(1000, 9999) . time());
+  $pubkey = base64_decode($pubkey);
+  $dump = openssl_public_encrypt($password, $encpass, $pubkey);
+  openssl_free_key($pubkey);
+  if ($dump !== FALSE) {
+    $return = array();
+    $return['passwd'] = base64_encode($encpass);
+    $iv_size = mcrypt_get_iv_size(MCRYPT_RIJNDAEL_128, MCRYPT_MODE_CBC);
+    $iv = mcrypt_create_iv($iv_size, MCRYPT_RAND);
+    unset ($iv_size);
+    $encmsg = openssl_encrypt($message, 'aes128', $password, 0, $iv);
+    $return['message'] = base64_encode($iv . $encmsg);
+    unset ($password, $dump, $encmsg, $encpass, $iv);
+    $return = serialize($return);
+    $return = base64_encode($return);
+    return $return;
+  }
+  unset ($dump, $encpass);
+  return NULL;
+}
+
+/**
+ *
+ * @param type $message
+ * @return type
+ */
+function dncopenssl_nonsealed_decrypt($message) {
+  $message = dncopenssl_decode_encrypted_array_string($message);
+  if (empty($message['passwd'])) {
+    return NULL;
+  }
+  $passwd = base64_decode($message['passwd']);
+  $private = dncopenssl_get_private_key();
+  $private = base64_decode($private);
+  $dec = openssl_private_decrypt($passwd, $decrypted, $private);
+  openssl_free_key($private);
+  if ($dec !== FALSE) {
+    $passwd = $decrypted;
+  }
+  unset ($private, $dec, $decrypted);
+  $message = base64_decode($message['message']);
+  $iv_size = mcrypt_get_iv_size(MCRYPT_RIJNDAEL_128, MCRYPT_MODE_CBC);
+  $iv = substr($message, 0, $iv_size);
+  $enc = openssl_decrypt(substr($message, $iv_size), 'aes128', $passwd, 0, $iv);
+  unset ($passwd, $iv, $iv_size);
+  if ($enc !== FALSE) {
+    return $enc;
+  }
+  unset($enc);
+  return NULL;
+}
+
+/**
+ *
+ * @param type $string
+ * @return type
+ */
+function dncopenssl_decode_encrypted_array_string($string) {
+  $string = base64_decode($string);
+  return json_decode($string, TRUE);
+}
+
+/**
+ *
+ * @param type $params
+ * @param type $publicKey
+ * @return type
+ */
+function dncopenssl_encrypt($data, $publicKey) {
+  $pubkeys = array();
+  if (!is_array($publicKey) && trim($publicKey) != '') {
+    $publicKey = array($publicKey);
+  }
+  foreach ($publicKey as $value) {
+    $pubkeys[] = base64_decode($value);
+  }
+  $sealed = '';
+  $ekeys = array();
+  $result = openssl_seal($data, $sealed, $ekeys, $pubkeys);
+  // foreach ($pubkeys as $values) {
+  //   openssl_free_key($values);
+  // }
+  if ($result !== FALSE) {
+    $dump = [];
+    foreach ($ekeys as $keys => $values) {
+      $dump[$keys] = base64_encode($values);
+    }
+    $ekeys = $dump;
+    $dump = [];
+    foreach ($pubkeys as $keys => $values) {
+      $dump[$keys] = base64_encode($values);
+    }
+    $pubkeys = $dump;
+    $return = array(
+      'data' => base64_encode($sealed),
+      'envkeys' => $ekeys,
+      'pubkeys' => $pubkeys,
+    );
+    unset ($pubkeys, $sealed, $ekeys, $result, $dump);
+    $return = json_encode($return);
+    return base64_encode($return);
+  }
+  unset ($pubkeys, $sealed, $ekeys, $result);
+  return NULL;
+}
+
+/**
+ *
+ * @param type $params
+ * @return type
+ */
+function dncopenssl_decrypt($data) {
+  $params = dncopenssl_decode_encrypted_array_string($data);
+  if (empty($params['envkeys']) || empty($params['data']) || empty($params['pubkeys'])) {
+    return NULL;
+  }
+  $params['envkeys'] = is_string($params['envkeys']) ? array($params['envkeys']) : $params['envkeys'];
+  $params['pubkeys'] = is_string($params['pubkeys']) ? array($params['pubkeys']) : $params['pubkeys'];
+  $envkey = dncopenssl_get_envkey($params['envkeys'], $params['pubkeys']);
+  // foreach ($params['pubkeys'] as $values) {
+  //   $values = base64_decode($values);
+  //   openssl_pkey_free($values);
+  // }
+  if (is_null($envkey)) {
+    unset ($envkey);
+    return NUll;
+  }
+  $params['envkey'] = $envkey;
+  unset($envkey);
+  return dncopenssl_open_sealed_encrypted_data($params);
+}
+
+/**
+ *
+ * @param type $string
+ * @param type $clientID
+ * @param type $nonsealed
+ * @return type
+ */
+function dncopenssl_encrypt_by_clientID($string, $clientID, $nonsealed = TRUE) {
+  $client = dncopenssl_get_client_data($clientID);
+  if (empty($client)) {
+    unset ($client);
+    return NULL;
+  }
+  if ($nonsealed !== FALSE) {
+    $result = dncopenssl_nonsealed_encrypt($string, $client['publicKey']);
+  }
+  else {
+    $result = dncopenssl_encrypt($string, $client['publicKey']);
+  }
+  unset ($client);
+  if (empty($result)) {
+    unset ($result);
+    return;
+  }
+  return $result;
+}
+
+/**
+ *
+ * @param type $id
+ * @return type
+ */
+function dncopenssl_get_client_data($id) {
+  $result = db_select('dncopenssl', 'n')
+          ->fields('n')
+          ->condition('clientID', $id)
+          ->execute();
+  $result = $result->fetchAssoc();
+  if (is_array($result) && count($result) > 0) {
+    return $result;
+  }
+  unset ($result);
+
+  return NULL;
+}
+
+function dncopenssl_test_decrypt($params) {
+  return dncopenssl_decrypt($param);
+}
+
+function dncopenssl_open_sealed_encrypted_data($params) {
+  if (!empty($params['data']) && !empty($params['envkey'])) {
+    $params['data'] = base64_decode($params['data']);
+    $params['envkey'] = base64_decode($params['envkey']);
+    $privatKey = dncopenssl_get_private_key();
+    $privatKey = base64_decode($privatKey);
+    $return = '0';
+    $result = openssl_open($params['data'], $return, $params['envkey'], $privatKey);
+    // openssl_pkey_free($privatKey);
+    if ($result !== FALSE) {
+      unset ($privatKey, $result);
+      return $return;
+    }
+    unset ($privatKey, $result, $return);
+  }
+  return NULL;
+}
+
+function dncopenssl_get_foreign_pubkey_by_given_target_url($url) {
+  $server = url($url, array('external' => TRUE));
+  $options = array('dncopenssl.pubkey' => array());
+  $result = dncmain_send_xmlrpc($server, $options);
+//  echo '<pre>'; print_r($result); echo '</pre>'; exit;
+  if ($result !== FALSE) {
+    unset($options, $server);
+    return $result;
+  }
+  unset($result, $options, $server);
+  return NULL;
+}
+
+function dncopenssl_get_bulk_client_datas($ids) {
+  if (is_string($ids)) {
+    $ids = array($ids);
+  }
+  $return = array();
+  foreach ($ids as $value) {
+    $result = dncopenssl_get_client_data($value);
+    if (!is_null($result) > 0 && !is_null($result['publicKey'])) {
+      $return[] = $result['publicKey'];
+    }
+    unset ($result);
+  }
+  if (count($return) > 0) {
+    return $return;
+  }
+  unset ($return);
+  return NULL;
+}
+
+function dncopenssl_decrypt_sealed_encoded_datas($data) {
+  return dncopenssl_decrypt($data);
+}
+
+function dncopenssl_get_envkey(array $envkeys = array(), array $pubkeys = array()) {
+  if (count($envkeys) < 1 || count($pubkeys) < 1) {
+    return NULL;
+  }
+  $pubkey = dncopenssl_get_public_key();
+  $pubkey = base64_encode($pubkey);
+  $getkey = array_search($pubkey, $pubkeys);
+  unset ($pubkey);
+  if (is_null($getkey)) {
+    unset ($getkey);
+    return NULL;
+  }
+  return !empty($envkeys[$getkey]) ? $envkeys[$getkey] : NULL;
+}
+
+function dncopenssl_get_all_clients() {
+  $result = db_select('dncopenssl', 'n')
+          ->fields('n')
+          ->execute();
+  $result = $result->fetchAll();
+  if (!is_array($result) || count($result) < 1) {
+    return NULL;
+  }
+
+  $return = array();
+  foreach ($result as $value) {
+    $return[$value->clientID] = $value->publicKey;
+  }
+  unset ($result);
+
+  return $return;
+}

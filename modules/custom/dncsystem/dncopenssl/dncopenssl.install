@@ -1,0 +1,62 @@
+<?php
+
+// $Id: dncopenssl, v 0.1.0.0 Apr 5, 2014 6:12:04 AM denic Exp $
+
+/* 
+ *  @file
+ *  install file for dncopenssl
+ * 
+ *  Copyright (c) 2013 Denic Wibowo<denicwibowo@gmail.com>.
+ *  All rights reserved.
+ *  
+ *  This program is free software; you can redistribute it and/or modify it 
+ *  under the terms of the GNU General Public License as published by the 
+ *  Free Software Foundation; either version 2 of the License, or 
+ *  (at your option) any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful, but 
+ *  WITHOUT ANY WARRANTY; without even the implied warranty of 
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General 
+ *  Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License along 
+ *  with this program; if not, write to the Free Software Foundation, Inc., 
+ *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ *  
+ *  dncopenssl.install
+ *  
+ *  Created on Apr 5, 2014, 6:12:04 AM
+ */
+
+function dncopenssl_uninstall() {
+  variable_del('dncopenssl_key_path');
+  variable_del('dncopenssl_strict_client');
+  menu_rebuild();
+}
+
+/**
+* Implementation of hook_schema().
+*/
+function dncopenssl_schema() {
+  $schema['dncopenssl'] = array(
+    'description' => t('Openssl implementation of DNC\'s system'),
+    'fields' => array(
+      'clientID' => array(
+        'type' => 'varchar',
+        'not null' => TRUE,
+        'length' => '255',
+        'description' => t('ID of served client'),
+        'default' => ''
+      ),
+      'publicKey' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'description' => t('Public key for openssl method if needed'),
+        'size' => 'normal',
+      ),
+    ),
+    'primary key' => array('clientID'),
+  );
+  
+  return $schema;
+}

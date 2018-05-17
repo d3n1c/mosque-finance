@@ -1,0 +1,155 @@
+<?php
+
+/*
+ * Copyright (C) 2018 denic
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ */
+
+/**
+ * Implementation of hook_load
+ * @return arg
+ **/
+function dncfilewrapper_load($arg) {
+  return check_plain($arg);
+}
+
+/**
+ * Implementation of hook_menu
+ *
+ * @return array
+ */
+function dncfilewrapper_menu() {
+  $items = [];
+  $items['admin/config/dncsystem/dncfilewrapper'] = [
+    'title' => 'File Wrapper',
+    'description' => 'Settings for DNC\'s System to handling file wrapper for storage',
+    'position' => 'right',
+    'weight' => 0,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => ['administer site configuration'],
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  ];
+  $items['admin/config/dncsystem/dncfilewrapper/global'] = [
+    'title' => 'Global Params',
+    'description' => 'Storage of assets parameters and configurations',
+    'access arguments' => ['administer site configuration'],
+    'page callback' => 'drupal_get_form',
+    'page arguments' => ['dncfilewrapper_admin_params'],
+    'file' => 'dncfilewrapper.admin.inc',
+  ];
+
+  return $items;
+}
+
+function dncfilewrapper_load_file($path = NULL) {
+  $confs = variable_get('dncfilewrapper_configs', []);
+  if (empty($confs['main_path'])) {
+    unset ($confs);
+    return;
+  }
+  require_once libraries_get_path('filewrapper') . '/filewrapper.php';
+  $path = $confs['main_path'] . (empty($path) ? NULL : DIRECTORY_SEPARATOR . $path);
+  return new FileWrap($path);
+}
+
+function dncfilewrapper_get_listing($type, array $search = [], array $range = [], $justcount = FALSE, $reverse = FALSE) {
+  $result = dncfilewrapper_load_file();
+  $return = empty($result) || !is_object($result) ? NULL : $result->dataListing($type, $search, $range, $justcount, $reverse);
+  unset ($result);
+  if (empty($return)) {
+    unset ($return);
+    return;
+  }
+  if (empty($GLOBALS['user']->uid)) {
+    foreach ($return as $keys => $values) {
+      foreach ($values as $key => $value) {
+        if (in_array($key, ['creator', 'created', 'updater', 'updated', 'deleter', 'deleted'])) {
+          unset ($return[$keys][$key]);
+        }
+      }
+    }
+  }
+  return $return;
+}
+
+function dncfilewrapper_get_data($type, $nid) {
+  $result = dncfilewrapper_load_file();
+  $return = empty($result) || !is_object($result) ? NULL : $result->getData($type, $nid);
+  unset ($result);
+  if (empty($return['nid'])) {
+    unset ($return);
+    return;
+  }
+  if (empty($GLOBALS['user']->uid)) {
+    foreach ($return as $keys => $values) {
+      if (in_array($keys, ['creator', 'created', 'updater', 'updated', 'deleter', 'deleted'])) {
+        unset ($return[$keys]);
+      }
+    }
+  }
+  return $return;
+}
+
+function dncfilewrapper_update_data($uid, array $data = []) {
+  if (empty($data) || empty($uid)) {
+    return;
+  }
+  
+  $result = dncfilewrapper_load_file();
+  return $result->updateData($uid, $data);
+}
+
+function dncfilewrapper_delete_data($uid, array $data = []) {
+  if (empty($data) || empty($uid)) {
+    return;
+  }
+  
+  $result = dncfilewrapper_load_file();
+  return $result->deleteData($uid, $data);
+}
+
+function dncfilewrapper_create_custom_folder($custompath) {
+  $confs = variable_get('dncfilewrapper_configs', []);
+  if (empty($confs['main_path'])) {
+    unset ($confs);
+    return;
+  }
+  $mainpath = $confs['main_path'];
+  clearstatcache();
+  if (!is_dir($mainpath)) {
+    dncfilewrapper_load_file()->makedir();
+  }
+  unset ($mainpath);
+  $result = dncfilewrapper_load_file($custompath);
+  return $result->makedir();
+}
+
+function dncfilewrapper_create_custom_file($custompath, $text) {
+  $confs = variable_get('dncfilewrapper_configs', []);
+  if (empty($confs['main_path'])) {
+    unset ($confs);
+    return;
+  }
+  $mainpath = $confs['main_path'];
+  clearstatcache();
+  if (!is_dir($mainpath)) {
+    dncfilewrapper_load_file()->makedir();
+  }
+  unset ($mainpath);
+  $result = dncfilewrapper_load_file($custompath);
+  return $result->write($text);
+}

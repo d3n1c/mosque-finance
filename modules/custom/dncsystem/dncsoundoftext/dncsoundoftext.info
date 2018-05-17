@@ -1,0 +1,6 @@
+name = "DNC Sound of Text"
+description = "DNC's system for handling sound of text"
+core = 7.x
+package = DNC System
+files[] = dncctypevars.admin.inc
+;configure = admin/config/system/dncctypevars

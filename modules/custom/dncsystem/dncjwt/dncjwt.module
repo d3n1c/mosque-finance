@@ -1,0 +1,45 @@
+<?php
+
+function dncjwt_get_secret($uid, $numeric = FALSE) {
+  settype($uid, 'int');
+  $user = empty($uid) ? user_load(0) : user_load($uid);
+  $dhash = drupal_get_hash_salt() . '_' . $user->created . '-' . $uid;
+  unset ($user);
+  $dhash = hash('sha256', $dhash);
+  $result = NULL;
+  if (!empty($numeric)) {
+    $result = crc32($dhash);
+    $result = sprintf('%u', $result);
+  }
+  else {
+    $result = substr($dhash, 6, 10);
+  }
+  unset ($dhash);
+  return $result;
+}
+
+function dncjwt_get_serverid($uid = 0) {
+  $secret = dncjwt_get_secret($uid);
+  $id = dncjwt_get_secret($uid, TRUE);
+  $header = json_encode([
+    'typ' => 'JWT',
+    'alg' => 'HS256'
+  ]);
+  $payload = json_encode([
+    'iat' => time(),
+    'jti' => crc32(base64_encode($id . time())),
+    'iss' => parse_url($GLOBALS['base_url'], PHP_URL_HOST) . base_path(),
+    'exp' => time() + (60 * 60 * 24),
+    'data' => [
+      'uid' => $uid,
+      'serverid' => $id
+    ]
+  ]);
+  $header = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
+  $payload = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($payload));
+  $signature = hash_hmac('sha256', $header . "." . $payload, $secret);
+  $signature = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($signature));
+  $result = $header . '.' . $payload . '.' . $signature;
+  unset ($secret, $id, $payload, $header, $signature);
+  return $result;
+}

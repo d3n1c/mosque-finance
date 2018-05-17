@@ -1,0 +1,1210 @@
+<?php
+
+/*
+ * Copyright (C) 2015 denic
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+ * @file
+ * Module to manage generalization of content variable
+ * to fit with all dnc system's scripts
+ */
+
+/**
+ * Implementation of hook_load
+ *  @return arg
+ **/
+function dncctypevars_load($arg) {
+  return check_plain($arg);
+}
+
+/**
+ * Implements hook_menu
+ *
+ * @return array
+ *   menu listing
+ */
+function dncctypevars_menu() {
+  $items = array();
+  $items['admin/structure/dncsystem/dncctypevars'] = array(
+    'title' => 'DNC\'s Content Type variables',
+    'description' => 'Register DNC\'s content type variables',
+//    'position' => 'right',
+    'access arguments' => array('administer dnc system'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncctypevars_manager'),
+    'file' => 'dncctypevars.admin.inc',
+  );
+  $items['admin/structure/dncsystem/dncctypevars/add'] = array(
+    'title' => 'Register new variable',
+    'description' => 'Registering new content type variables',
+    'access arguments' => array('administer dnc system'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncctypevars_register'),
+    'file' => 'dncctypevars.admin.inc',
+    'type' => MENU_LOCAL_ACTION,
+  );
+  $items['admin/structure/dncsystem/dncctypevars-manage/%dncctypevars'] = array(
+    'title' => 'Register new variable',
+    'description' => 'Registering new content type variables',
+    'access arguments' => array('administer dnc system'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncctypevars_module_register', 4),
+    'file' => 'dncctypevars.admin.inc',
+    'type' => MENU_LOCAL_ACTION,
+  );
+  $items['dncctypevars/ctset/%ctools_js/form/setctype/%dncctypevars/%'] = array(
+    'title' => 'Register Content Type',
+    'description' => 'Registering content type into data key',
+    'page callback' => 'dncctypevars_module_register_ctype_popup',
+    'page arguments' => array(1, 5, 6),
+    'access arguments' => array('administer dnc system'),
+    'type' => MENU_CALLBACK,
+    'file' => 'dncctypevars.admin.inc',
+  );
+  $items['dncctypevars/search/module'] = array(
+    'access arguments' => array('administer site configuration'),
+    'page callback' => '_dncctypevars_admin_module_autocomplete',
+    'type' => MENU_CALLBACK,
+  );
+  $items['dncctypevars/search/parentkey'] = array(
+    'access arguments' => array('administer site configuration'),
+    'page callback' => '_dncctypevars_admin_parentkey_autocomplete',
+    'type' => MENU_CALLBACK,
+  );
+  $items['dncctypevars/search/contenttype'] = array(
+    'access arguments' => array('administer site configuration'),
+    'page callback' => '_dncctypevars_admin_nodetype_autocomplete',
+    'type' => MENU_CALLBACK,
+  );
+  $items['dncctypevars/search/field'] = array(
+    'access arguments' => array('administer site configuration'),
+    'page callback' => '_dncctypevars_admin_field_autocomplete',
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/people/permissions/bulk-node-assign'] = array(
+    'title' => 'Bulk Node Assign',
+    'description' => 'Assign bulk node\'s permissions in fastest way',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('dncctypevars_bulk_assign_node_permission'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'dncctypevars.role.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Autocomplete service function
+ *
+ * @param string $string
+ *   request string to be the key of searching
+ *
+ * @return string Output in json that matches
+ */
+function _dncctypevars_admin_nodetype_autocomplete($string) {
+  $matches = array();
+  $sql = db_select('node_type', 'n')
+          ->fields('n', array('type'))
+          ->condition('type', '%' . $string . '%', 'LIKE')
+          ->range(0, 20)
+        ->execute();
+  $result = $sql->fetchAll();
+  if (is_array($result) && count($result) > 0) {
+    foreach ($result as $value) {
+      $matches[$value->type] = $value->type;
+    }
+  }
+  unset ($result);
+  drupal_json_output($matches);
+}
+
+/**
+ * Autocomplete service function by field key
+ *
+ * @param string $string
+ *   string of the field name request
+ *
+ * @return string in json formatted output if matches
+ */
+function _dncctypevars_admin_field_autocomplete($string) {
+  $matches = array();
+  if (mb_eregi($string, 'title')) {
+    $matches['title'] = 'title (Core: Title)';
+  }
+  $sql = db_select('field_config', 'n')
+          ->fields('n', array('field_name'))
+          ->condition('field_name', '%' . $string . '%', 'LIKE')
+          ->range(0, 20)
+        ->execute();
+  $result = $sql->fetchAll();
+  if (is_array($result) && count($result) > 0) {
+    foreach ($result as $value) {
+      $bundle = _dncctypevars_admin_get_field_bundleuser($value->field_name);
+      $dump = array();
+      if (!empty($bundle)) {
+        foreach ($bundle as $key => $val) {
+          $dump[] = $key . ': ' . $val;
+        }
+      }
+      $matches[$value->field_name] = $value->field_name . ' (' . implode(', ', $dump) . ')';
+      unset ($dump, $bundle);
+    }
+  }
+  unset ($result);
+  drupal_json_output($matches);
+}
+
+/**
+ * Getting bundles of the fieldname
+ *
+ * @param string $fieldname
+ *   string of field name
+ *
+ * @return array
+ *   bundles array if any
+ */
+function _dncctypevars_admin_get_field_bundleuser($fieldname) {
+  $result = field_info_field($fieldname);
+  $bundles = array();
+  if (!empty($result['bundles']['node'])) {
+    foreach ($result['bundles']['node'] as $value) {
+      $detail = field_info_instance('node', $fieldname, $value);
+      $bundles[$value] = $detail['label'];
+    }
+  }
+  unset ($result);
+  return $bundles;
+}
+
+/**
+ * Autocomplete service function by parent key
+ *
+ * @param string $string
+ *   string to be key of searching
+ *
+ * @return string
+ *   Output matches in json formatted
+ */
+function _dncctypevars_admin_parentkey_autocomplete($string) {
+  $matches = array();
+  $sql = db_select('dncctypevars_registers', 'n')
+          ->fields('n', array('parentkey'))
+          ->condition('parentkey', '%' . $string . '%', 'LIKE')
+          ->range(0, 20)
+        ->execute();
+  $result = $sql->fetchAll();
+  if (is_array($result) && count($result) > 0) {
+    foreach ($result as $value) {
+      $matches[$value->parentkey] = $value->parentkey;
+    }
+  }
+  unset ($result);
+  drupal_json_output($matches);
+}
+
+/**
+ * Autocomplete service function by module
+ *
+ * @param string $string
+ *   string of module name
+ *
+ * @return string
+ *   output in json formatted if matches
+ */
+function _dncctypevars_admin_module_autocomplete($string) {
+  $matches = array();
+  $sql = db_select('system', 'n')
+          ->fields('n', array('name'))
+          ->condition('type', 'module')
+          ->condition('status', 1)
+          ->condition('name', '%' . $string . '%', 'LIKE')
+          ->range(0, 20)
+        ->execute();
+  $result = $sql->fetchAll();
+  if (is_array($result) && count($result) > 0) {
+    foreach ($result as $value) {
+      $dump = system_get_info('module', $value->name);
+      $matches[$value->name] = $dump['name'] . ' (' . $value->name . ')';
+      unset ($dump);
+    }
+  }
+  unset ($result);
+  drupal_json_output($matches);
+}
+
+/**
+ * Get ID of new variable
+ * always take maximum number of existing ID
+ *
+ * @return int
+ *   ID of the variable
+ */
+function dncctypevars_get_new_variable_id() {
+  $query = db_select('dncctypevars_registers', 'n')
+          ->fields('n', array('varid'))
+          ->orderBy('varid', 'DESC')
+          ->range(0, 1)
+        ->execute();
+  $result = $query->fetchAssoc();
+  unset($query);
+  if (count($result) < 1) {
+    $return = 1;
+  }
+  else {
+    settype($result['varid'], 'int');
+    $return = $result['varid'] + 1;
+  }
+  unset ($result);
+  return $return;
+}
+
+/**
+ * Getting variable data by given ID
+ *
+ * @param int $id
+ *   ID that be key to searching action
+ *
+ * @return array
+ *   result array if data found, NULL if otherwise
+ */
+function dncctypevars_get_variables_by_id($id) {
+  settype($id, 'int');
+  $query = db_select('dncctypevars_registers', 'n')
+          ->fields('n')
+          ->condition('varid', $id)
+          ->execute();
+  $result = $query->fetchAssoc();
+  unset ($query);
+  if (count($result) < 1) {
+    unset ($result);
+    return;
+  }
+  return $result;
+}
+
+/**
+ * Delete variables by given IDs
+ *
+ * @param array $ids
+ *   some id to be key to searching in delete action
+ *
+ * @return null
+ */
+function dncctypevars_delete_variables_by_ids(array $ids = array()) {
+  if (count($ids) < 1) {
+    return;
+  }
+  foreach ($ids as $value) {
+    settype($value, 'int');
+    db_delete('dncctypevars_registers')->condition('varid', $value)->execute();
+  }
+}
+
+/**
+ * Getting variable by given parameters
+ *
+ * @param string $module
+ *   string of the module name
+ * @param string $parentkey
+ *   key of the parent
+ * @param string $context
+ *   context of searching content type
+ * @param string $name
+ *   name of the variable that will search
+ *
+ * @return array
+ *   result array if matches, or NULL if otherwise
+ */
+function dncctypevars_get_variable_by_params($module, $parentkey, $context, $name) {
+  $query = db_select('dncctypevars_registers', 'n')
+          ->fields('n')
+          ->condition('module', $module)
+          ->condition('parentkey', $parentkey)
+          ->condition('context', $context)
+          ->condition('varname', $name)
+          ->execute();
+  $result = $query->fetchAssoc();
+  unset ($query);
+  if (empty($result['varid'])) {
+    unset ($result);
+    return;
+  }
+  return $result['varvalue'];
+}
+
+/**
+ * Retrieving scheme variables
+ *
+ * @param string $modulename
+ *   Name of the given module
+ * @param array $scheme
+ *   Data scheme
+ *
+ * @return array
+ *   result array of the data variables
+ */
+function dncctypevars_retrieve_scheme_vars($modulename, array $scheme = array()) {
+  $return = array();
+  foreach ($scheme as $key => $value) {
+    $dump = dncctypevars_get_variable_by_params($modulename, $key, 'content_type', $key);
+    if (!empty($dump)) {
+      $return[$key]['content_type'] = $dump;
+      foreach ($value as $vl) {
+        $dmp = dncctypevars_get_variable_by_params($modulename, $key, 'field', $vl);
+        $return[$key]['fields'][$vl] = !empty($dmp) ? $dmp : NULL;
+        unset ($dmp);
+      }
+    }
+    else {
+      $return[$key] = array('content_type' => NULL);
+      foreach($value as $vl) {
+        $return[$key]['fields'][$vl] = NULL;
+      }
+    }
+    unset ($dump);
+  }
+  return empty($return) ? NULL : $return;
+}
+
+/**
+ * Getting scheme info
+ *
+ * @param string $modulename
+ *   Given name of the module
+ * @param array $scheme
+ *   data scheme
+ *
+ * @return string
+ *   Listing matches in html list
+ */
+function dncctypevars_get_scheme_infos($modulename, array $scheme = array()) {
+  $schema = dncctypevars_retrieve_scheme_vars($modulename, $scheme);
+  if (!is_array($schema) || count($schema) < 1) {
+    unset ($schema);
+    return;
+  }
+  $info = 'Content Type scheme :<ul>';
+  foreach ($schema as $key => $value) {
+    $info .= '<li' . (empty($value['content_type']) ? ' style="color: red;"' : NULL) . '><strong>' . $key . ':</strong> ' . (!empty($value['content_type']) ? $value['content_type'] : t('X - please register it by parentkey: @parentkey, context: content_type, name: @name', array('@parentkey' => $key, '@name' => $key)));
+    $info .= '<ul>';
+    foreach ($value['fields'] as $ky => $vl) {
+      $info .= '<li' . (empty($vl) ? ' style="color: red;"' : NULL) . '><strong>' . $ky . ':</strong> ' . (!empty($vl) ? $vl : t('X - please register it by parentkey: @parentkey, context: field, name: @name', array('@parentkey' => $key, '@name' => $ky))) . '</li>';
+    }
+    $info .= '</ul></li>';
+  }
+  $info .= '</ul>';
+  $info .= t('You can register variable above by this ') . l('link', 'admin/structure/dncsystem/dncctypevars-manage/' . $modulename);
+  unset ($schema);
+  return $info;
+}
+
+/**
+ * Getting variable of content type scheme
+ *
+ * @param string $module
+ *   given module name
+ * @param array $schemevars
+ *   data scheme
+ * @param string $varkey
+ *   key of the searching scheme
+ *
+ * @return array
+ *   return array of the scheme key
+ */
+function dncctypevars_get_ctype_scheme_vars($module, $schemevars, $varkey = NULL) {
+  $sscheme = dncctypevars_retrieve_scheme_vars($module, $schemevars);
+  return empty($varkey) ? $sscheme : (empty($sscheme[$varkey]) ? NULL : $sscheme[$varkey]);
+}
+
+/**
+ * Getting context y content type
+ *
+ * @param string $module
+ *   given module name
+ * @param string $content_type
+ *   information of the content type
+ *
+ * @return array
+ *   Matches data array if found, or NULL if otherwise
+ */
+function dncctypevars_get_context_by_content_type($module, $content_type) {
+  $query = db_select('dncctypevars_registers', 'n')
+          ->fields('n')
+          ->condition('module', $module)
+          ->condition('context', 'content_type')
+          ->condition('varvalue', $content_type)
+          ->range(0, 1)
+          ->execute();
+  $result = $query->fetchAssoc();
+  unset ($query);
+  if (empty($result['varid'])) {
+    unset ($result);
+    return;
+  }
+  return $result['varname'];
+}
+
+/**
+ * Form to input content type data variable
+ *
+ * @param array $form
+ *   variable array of form
+ * @param array $form_state
+ *   variable array of form state
+ * @param string $context
+ *   base64 encoded and serialized context array string
+ *
+ * @return array
+ *   Form array that ready to render by drupal_get_form function
+ */
+function dncctypevars_register_content_type(array $form = array(), array $form_state = array(), $context = NULL) {
+  if (empty($form_state['storage']['context'])) {
+    if (!empty($context)) {
+      $context = dncsystem_unserialize(base64_decode(urldecode($context)));
+      $form_state['storage']['context'] = $context;
+    }
+  }
+  if (!empty($form_state['storage'])) {
+    foreach ($form_state['storage'] as $keys => $values) {
+      $form[$keys] = array(
+        '#type' => 'value',
+        '#value' => $values
+      );
+    }
+  }
+  $ctypes = array();
+  $types = node_type_get_types();
+  if (!empty($types)) {
+    foreach ($types as $value) {
+      $ctypes[$value->type] = $value->name;
+    }
+  }
+  unset ($types);
+  $function = $form_state['storage']['context']['module'] . '_content_type_schema_vars';
+  $defaults = !function_exists($function) ? array() : $function(TRUE, $form_state['storage']['context']['context']);
+  $form['content_type'] = array(
+    '#type' => 'select',
+    '#options' => $ctypes,
+    '#title' => t('Content Type'),
+    '#default_value' => empty($defaults['content_type']) ? key($ctypes) : $defaults['content_type'],
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Set')
+  );
+  return $form;
+}
+
+/**
+ * Checking registered variable by given
+ * module, context, parentkey, and varname
+ *
+ * @param string $module
+ *   module name of the variable
+ * @param string $context
+ *   context can be content_type or field
+ * @param string $parentkey
+ *   parent key of the variable, can be content type variable
+ * @param string $varname
+ *   variable name
+ *
+ * @return array
+ *   Result data found in array, or NULL if not found
+ */
+function dncctypevars_check_existing_variable($module, $context, $parentkey, $varname) {
+  $sql = db_select('dncctypevars_registers', 'r')
+          ->fields('r')
+          ->condition('module', $module)
+          ->condition('context', $context)
+          ->condition('parentkey', $parentkey)
+          ->condition('varname', $varname)
+        ->execute();
+  $result = $sql->fetchAssoc();
+  unset ($sql);
+  if (empty($result['varid'])) {
+    unset ($result);
+    return;
+  }
+  return $result;
+}
+
+/**
+ * Save variable action.
+ *
+ * @param string $module
+ *   module name of the variable
+ * @param string $varname
+ *   variable name
+ * @param string $parentkey
+ *   parent key of the variable, can be content type variable
+ * @param string $context
+ *   context can be content_type or field
+ * @param string $varvalue
+ *   the value of the variable
+ *
+ * @return int
+ *   Return variable ID
+ */
+function dncctypevars_save_variable($module, $varname, $parentkey, $context, $varvalue) {
+  $record = new stdClass();
+  $record->module = $module;
+  $record->context = $context;
+  $record->parentkey = $parentkey;
+  $record->varname = $varname;
+  $record->varvalue = $varvalue;
+  $check = dncctypevars_check_existing_variable($module, $context, $parentkey, $varname);
+  if (!empty($check['varid'])) {
+    $record->varid = $check['varid'];
+    drupal_write_record('dncctypevars_registers', $record, 'varid');
+  }
+  else {
+    $record->varid = dncctypevars_get_new_variable_id();
+    drupal_write_record('dncctypevars_registers', $record);
+  }
+  unset($check);
+  return $record->varid;
+}
+
+/**
+ * Submit action for registering content type variable
+ *
+ * @param array $form
+ *   variable array of form
+ * @param array $form_state
+ *   variable array of form state
+ */
+function dncctypevars_register_content_type_submit(&$form, &$form_state) {
+  form_state_values_clean($form_state);
+  dncctypevars_save_variable($form_state['values']['context']['module'], $form_state['values']['context']['context'], $form_state['values']['context']['context'], 'content_type', $form_state['values']['content_type']);
+}
+
+/**
+ * CTools Modal settings
+ *
+ * @param string $size
+ *   information about size of modal's dialog box
+ *   it can be small, medium, or large
+ */
+function dncctypevars_set_modal_settings($size = 'small') {
+  $custom_style = array(
+    'dncctypevars-modal-style' => array(
+      'modalSize' => array(
+        'type' => 'scale',
+        'width' => ($size == 'small' ? .4 : ($size == 'medium' ? .75 : .9)),
+        'height' => ($size == 'small' ? .3 : ($size == 'medium' ? .75 : .8)),
+        'addWidth' => 70,
+        'addHeight' => 70,
+        'contentRight' => 10,
+        'contentBottom' => 20,
+      ),
+      'animation' => 'fadeIn',
+      'animationSpeed' => 'slow',
+      'loadingText' => t('Loading...'),
+      'modalOptions' => array(
+        'opacity' => .75,
+        'background' => '#000',
+      ),
+//      'modalTheme' => 'CoolsFaceStyle',
+    ),
+  );
+  drupal_add_js($custom_style, 'setting');
+}
+
+function dncctypevars_content_type_preparation(array $form = array(), array $form_state = array()) {
+  if (empty($form_state['storage']['module'])) {
+    return $form;
+  }
+  $module = $form_state['storage']['module'];
+  $function = $module . '_content_type_schema_vars';
+  if (empty($function)) {
+    unset ($module, $function);
+    return $form;
+  }
+
+  $form['module'] = array(
+    '#type' => 'value',
+    '#value' => $form_state['storage']['module'],
+  );
+
+  $info = $function(FALSE, NULL, TRUE);
+  $form['content_types'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Content Types'),
+    '#description' => t('Main content type that be used in this system'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#weight' => 0,
+  );
+  $form['content_types']['scheme'] = array(
+    '#markup' => $info,
+  );
+  unset ($info);
+
+  $scheme = $function(TRUE);
+  if (empty($scheme)) {
+    $form['autocreate'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Content type auto creation'),
+      '#weight' => -10,
+    );
+    $form['content_types']['#states'] = array(
+      'invisible' => array(
+        ':input[name="autocreate"]' => array('checked' => TRUE),
+      ),
+    );
+
+    $nextweight = $form['content_types']['#weight'] + 10;
+    $scheme = $function(FALSE, NULL, FALSE, TRUE);
+    foreach ($scheme as $keys => $values) {
+      $title = str_replace('_', ' ', str_replace('-', ' ', $keys));
+      $form['v_' . $keys] = array(
+        '#type' => 'fieldset',
+        '#title' => ucwords(t($title)),
+        '#weight' => $nextweight,
+        '#collapsible' => TRUE,
+        '#collapsed' => TRUE,
+        '#states' => array(
+          'visible' => array(
+            ':input[name="autocreate"]' => array('checked' => TRUE),
+          ),
+        ),
+      );
+      $form['v_' . $keys]['types[' . $keys . '][name]'] = array(
+        '#type' => 'textfield',
+        '#title' => ucwords(t('name')),
+        '#weight' => 10,
+        '#default_value' => ucwords($title),
+      );
+      $form['v_' . $keys]['types[' . $keys . '][description]'] = array(
+        '#type' => 'textfield',
+        '#title' => ucwords(t('description')),
+        '#weight' => 20,
+        '#default_value' => t('description of') . ' ' . $title,
+      );
+      $form['v_' . $keys]['fields'] = array(
+        '#type' => 'fieldset',
+        '#title' => ucwords(t('fields')),
+        '#weight' => 30,
+        '#collapsible' => TRUE,
+        '#collapsed' => FALSE,
+      );
+      unset ($title);
+      $nextweight++;
+
+      $i = 0;
+      foreach ($values as $key => $value) {
+        $title = str_replace('_', ' ', str_replace('-', ' ', $key));
+        $form['v_' . $keys]['fields']['types[' . $keys . '][fields][' . $key . ']'] = array(
+          '#type' => 'textfield',
+          '#title' => $key,
+          '#weight' => $i,
+          '#default_value' => ucwords($title),
+        );
+        if ($value[0] == 'property') {
+          $form['v_' . $keys]['fields']['types[' . $keys . '][title_label]'] = $form['v_' . $keys]['fields']['types[' . $keys . '][fields][' . $key . ']'];
+          unset ($form['v_' . $keys]['fields']['types[' . $keys . '][fields][' . $key . ']']);
+        }
+        unset ($title);
+        $i++;
+      }
+      unset ($i);
+    }
+    unset ($nextweight);
+
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('create now!'),
+      '#weight' => 1000,
+      '#states' => array(
+        'visible' => array(
+          ':input[name="autocreate"]' => array('checked' => TRUE),
+        ),
+      ),
+    );
+  }
+  unset ($scheme);
+
+  return $form;
+}
+
+function dncctypevars_content_type_preparation_submit(&$form, &$form_state) {
+  if (empty($form_state['input']['autocreate'])) {
+    $form_state['redirect'] = empty($form_state['redirect']) ? current_path() : $form_state['redirect'];
+    return;
+  }
+
+  $structures = dncctypevars_create_content_type_structures($form_state['values']['module'], $form_state['input']['types']);
+
+  $operations = array();
+  foreach ($structures as $keys => $values) {
+    $operations[] = array('dncctypevars_content_type_create_batch', array($values, $form_state['values']['module']));
+  }
+
+  $batch_definition = array(
+    'operations' => $operations,
+    'title' => t('Content Type Creation'),
+    'init_message' => t('Progress start...'),
+    'progress_message' => t('Precessed @current out of @total'),
+    'error_message' => t('Process has encountered an error'),
+    'finished' => 'dncctypevars_content_type_create_finished'
+  );
+  unset ($operations);
+  batch_set($batch_definition);
+}
+
+function dncctypevars_create_content_type_structures($module, array $datasource = array()) {
+//  echo '<pre>'; print_r($datasource); echo '</pre>'; exit;
+  $function = $module . '_content_type_schema_vars';
+  if (!function_exists($function)) {
+    unset ($function);
+    return;
+  }
+  $scheme = $function(FALSE, NULL, FALSE, TRUE);
+  $structures = array();
+  $isuffix = 0;
+  foreach ($scheme as $keys => $values) {
+    $title = str_replace('_', ' ', str_replace('-', ' ', $keys));
+    $structures[$keys]['type']['type'] = $keys;
+    $structures[$keys]['type']['name'] = empty($datasource[$keys]['name']) ? ucwords($title) : $datasource[$keys]['name'];
+    $structures[$keys]['type']['description'] = empty($datasource[$keys]['description']) ? t('description of') . ' ' . $title : $datasource[$keys]['description'];
+    $structures[$keys]['type']['title_label'] = empty($datasource[$keys]['title_label']) ? ucwords(t('title')) : $datasource[$keys]['title_label'];
+    $structures[$keys]['type']['module'] = $module;
+    $structures[$keys]['type']['context'] = $keys;
+    unset ($title);
+    $i = 0;
+    foreach ($values as $key => $value) {
+      if ($value[0] == 'property') {
+        continue;
+      }
+      $title = str_replace('_', ' ', str_replace('-', ' ', $key));
+      $isuffix ++;
+      $structures[$keys]['fields'][$key]['field_name'] = 'field_' . $key . '_' . str_repeat('0', 4 - strlen($isuffix)) . $isuffix;
+      $structures[$keys]['fields'][$key]['type'] = $value[0];
+      $structures[$keys]['fields'][$key]['label'] = empty($datasource[$keys]['fields'][$key]) ? ucwords($title) : $datasource[$keys]['fields'][$key];
+      $structures[$keys]['fields'][$key]['description'] = t('description of') . ' ' . (empty($datasource[$keys]['fields'][$key]) ? $title : $datasource[$keys]['fields'][$key]);
+      $structures[$keys]['fields'][$key]['required'] = $value[1];
+      $structures[$keys]['fields'][$key]['widget']['weight'] = $i;
+      $structures[$keys]['fields'][$key]['display']['default']['weight'] = $i;
+      unset ($title);
+      if ($value[0] == 'text') {
+        $structures[$keys]['fields'][$key]['widget']['settings']['size'] = 40;
+        $structures[$keys]['fields'][$key]['display']['default']['settings']['edit']['editor'] = 'plain_text';
+        $structures[$keys]['fields'][$key]['settings']['maxlength'] = 255;
+      }
+      elseif ($value[0] == 'text_long') {
+        $structures[$keys]['fields'][$key]['cardinality'] = 1;
+        $structures[$keys]['fields'][$key]['display']['default']['settings']['edit']['editor'] = 'plain_text';
+        $structures[$keys]['fields'][$key]['settings'] = array();
+      }
+      elseif ($value[0] == 'email') {
+        $structures[$keys]['fields'][$key]['cardinality'] = 1;
+        $structures[$keys]['fields'][$key]['widget']['settings']['size'] = 40;
+        // $structures[$keys]['fields'][$key]['settings']['maxlength'] = 255;
+      }
+      elseif ($value[0] == 'file') {
+        $structures[$keys]['fields'][$key]['cardinality'] = -1;
+        $structures[$keys]['fields'][$key]['file_directory'] = $keys . '_files';
+        $structures[$keys]['fields'][$key]['file_extensions'] = 'zip rar 7z odt doc docx xls xlsx png jpg pdf rtf txt';
+      }
+      elseif ($value[0] == 'image') {
+        $structures[$keys]['fields'][$key]['cardinality'] = -1;
+        $structures[$keys]['fields'][$key]['file_directory'] = $keys . '_images';
+        $structures[$keys]['fields'][$key]['file_extensions'] = 'png jpg';
+      }
+      elseif ($value[0] == 'date') {
+        $structures[$keys]['fields'][$key]['widget']['settings']['year_range'] = '-0:+0';
+        $structures[$keys]['fields'][$key]['default_value_code'] = 'now';
+        $structures[$keys]['fields'][$key]['settings']['granularity']['month'] = 'month';
+        $structures[$keys]['fields'][$key]['settings']['granularity']['day'] = 'day';
+        $structures[$keys]['fields'][$key]['settings']['granularity']['year'] = 'year';
+        $structures[$keys]['fields'][$key]['settings']['granularity']['hour'] = 0;
+        $structures[$keys]['fields'][$key]['settings']['granularity']['minute'] = 0;
+        $structures[$keys]['fields'][$key]['settings']['granularity']['second'] = 0;
+      }
+      elseif ($value[0] == 'entityreference') {
+        $structures[$keys]['fields'][$key]['settings']['handler_settings']['target_bundles'] = $value[2];
+        $structures[$keys]['fields'][$key]['settings']['handler_settings']['usedmodule'] = empty($value[3]) ? $module : $value[3];
+      }
+      elseif ($value[0] == 'number_decimal') {
+        $structures[$keys]['fields'][$key]['settings']['precision'] = 25;
+        $structures[$keys]['fields'][$key]['settings']['scale'] = 2;
+        $structures[$keys]['fields'][$key]['settings']['decimal_separator'] = '.';
+      }
+      elseif ($value[0] == 'list_integer') {
+        $structures[$keys]['fields'][$key]['settings']['allowed_values'] = $value[2];
+      }
+      elseif ($value[0] == 'list_boolean') {
+        $structures[$keys]['fields'][$key]['settings']['allowed_values'] = array(0 => NULL, 1 => NULL);
+      }
+      $i++;
+    }
+    unset ($i);
+  }
+  unset($isuffix, $scheme);
+  return $structures;
+}
+
+function dncctypevars_content_type_create_batch(array $data = array(), $module, &$context) {
+  if (!empty($data['type'])) {
+    dncctypevars_create_type($data['type']);
+    if (!empty($data['type']['module'])) {
+      dncctypevars_save_variable($data['type']['module'], $data['type']['context'], $data['type']['context'], 'content_type', $data['type']['type']);
+      if (empty($data['fields']['title'])) {
+        dncctypevars_save_variable($data['type']['module'], 'title', $data['type']['context'], 'field', 'title');
+      }
+    }
+  }
+  if (!empty($data['fields'])) {
+    foreach ($data['fields'] as $keys => $values) {
+      $values['bundle'] = $data['type']['type'];
+      $values['parenttype'] = $data['type']['context'];
+      $values['fieldcontext'] = $keys;
+      dncctypevars_create_field_instance($values, $module);
+      if (!empty($data['type']['module'])) {
+        dncctypevars_save_variable($data['type']['module'], $keys, $data['type']['context'], 'field', $values['field_name']);
+      }
+    }
+  }
+  $context['message'] = st('Creating content type <strong>@type</strong>', array('@type' => $data['type']['name']));
+}
+
+function dncctypevars_content_type_create_finished($success, $results, $operations) {
+  if ($success) {
+    drupal_set_message(t('All content types have been successfully created :)'));
+  }
+  else {
+    // An error occurred.
+    // $operations contains the operations that remained unprocessed.
+    $error_operation = reset($operations);
+    drupal_set_message(t('An error occurred while processing @operation with arguments : @args', array('@operation' => $error_operation[0], '@args' => print_r($error_operation[0], TRUE))));
+  }
+}
+
+function dncctypevars_create_type(array $data = array()) {
+  $type = array(
+    'type' => $data['type'],
+    'name' => $data['name'],
+    'base' => 'node_content',
+    'module' => 'node',
+    'description' => $data['description'],
+    'has_title' => 1,
+    'title_label' => $data['title_label'],
+    'custom' => 1,
+    'modified' => 1,
+    'locked' => 0,
+    'disabled' => 0,
+    'orig_type' => $data['type'],
+  );
+  unset ($ctypenames);
+  $type = node_type_set_defaults($type);
+  node_type_save($type);
+  variable_set('additional_settings__active_tab_' . $data['type'], 'edit-submission');
+  variable_set('comment_anonymous_' . $data['type'], 0);
+  variable_set('comment_default_mode_' . $data['type'], 1);
+  variable_set('comment_default_per_page_' . $data['type'], '50');
+  variable_set('comment_form_location_' . $data['type'], 1);
+  variable_set('comment_' . $data['type'], '1');
+  variable_set('comment_preview_' . $data['type'], '1');
+  variable_set('menu_options_' . $data['type'], array());
+  variable_set('menu_parent_' . $data['type'], 'main-menu:0');
+  variable_set('node_options_' . $data['type'], array('status'));
+  variable_set('node_preview_' . $data['type'], '0');
+  variable_set('node_submitted_' . $data['type'], 1);
+  variable_set('save_continue_' . $data['type'], 'Save and add fields');
+}
+
+function dncctypevars_create_field_instance(array $data = array(), $module) {
+  $field = array(
+    'field_name' => $data['field_name'],
+    'type' => $data['type'],
+    'cardinality' => empty($data['cardinality']) ? 1 : $data['cardinality'],
+    'locked' => FALSE,
+    'storage' => array(
+      'type' => 'field_sql_storage',
+      'settings' => array(),
+    ),
+  );
+  if ($data['type'] == 'image') {
+    $field['indexes'] = array('fid' => array('fid'));
+    $field['settings'] = array(
+      'uri_scheme' => 'public',
+      'default_image' => 0,
+    );
+  }
+  elseif (preg_match('/^list/', $data['type'])) {
+    $field['indexes'] = array('value' => array('value'));
+    if (!empty($data['settings']['allowed_values'])) {
+      $field['settings']['allowed_values'] = $data['settings']['allowed_values'];
+      $field['settings']['allowed_values_function'] = NULL;
+    }
+  }
+  elseif ($data['type'] == 'date') {
+    $field['indexes'] = array();
+    $field['settings']['granularity'] = $data['settings']['granularity'];
+    $field['settings']['tz_handling'] = 'none';
+    $field['settings']['timezone_db'] = NULL;
+    $field['settings']['cache_enabled'] = 0;
+    $field['settings']['cache_count'] = 4;
+    $field['settings']['todate'] = NULL;
+  }
+  elseif($data['type'] == 'text') {
+    $field['indexes'] = array('format' => array('format'));
+  }
+  elseif($data['type'] == 'email') {
+    $field['indexes'] = array();
+    $field['settings'] = empty($data['settings']) ? array() : $data['settings'];
+  }
+  elseif($data['type'] == 'entityreference') {
+    $usedmodule = $data['settings']['handler_settings']['usedmodule'];
+    $function = $usedmodule . '_content_type_schema_vars';
+    if (!function_exists($function)) {
+      unset ($function);
+      return;
+    }
+
+    $scheme = $function(TRUE, $data['settings']['handler_settings']['target_bundles']);
+
+    $field['indexes'] = array('target_id' => array('target_id'));
+    $field['settings']['target_type'] = 'node';
+    $field['settings']['handler'] = 'base';
+    $field['settings']['handler_settings'] = array(
+      'target_bundles' => array(
+        $scheme['content_type'] => $scheme['content_type'],
+      ),
+      'sort' => array(
+        'type' => 'property',
+        'property' => 'title',
+        'direction' => 'ASC',
+      ),
+      'behaviors' => array(
+        'views-select-list' => array(
+          'status' => 0,
+        ),
+      ),
+    );
+    unset ($scheme, $function);
+    $field['foreign keys'] = array(
+      'node' => array(
+        'table' => 'node',
+        'columns' => array(
+          'target_id' => 'nid',
+        ),
+      ),
+    );
+  }
+  elseif($data['type'] == 'file') {
+    $field['indexes'] = array('fid' => array('fid'));
+    $field['settings'] = array(
+      'display_field' => 0,
+      'display_default' => 0,
+      'uri_scheme' => 'public',
+    );
+    $field['foreign keys'] = array(
+      'fid' => array(
+        'table' => 'file_managed',
+        'columns' => array(
+          'fid' => 'fid',
+        ),
+      ),
+    );
+  }
+  elseif($data['type'] == 'number_integer') {
+    $field['indexes'] = array();
+    $field['settings'] = array();
+  }
+  elseif($data['type'] == 'number_decimal') {
+    $field['indexes'] = array();
+    $field['settings'] = $data['settings'];
+  }
+  elseif($data['type'] == 'text_long') {
+    $field['indexes'] = array('format' => array('format'));
+    $field['foreign keys'] = array(
+      'format' => array(
+        'table' => 'filter_format',
+        'columns' => array(
+          'fid' => 'format',
+        ),
+      ),
+    );
+    $field['settings'] = array();
+  }
+
+  $finfo = field_info_field($field['field_name']);
+  if (empty($finfo)) {
+    field_create_field($field);
+  }
+  unset ($field, $finfo);
+
+  $instance = array(
+    'field_name' => $data['field_name'],
+    'entity_type' => 'node',
+    'label' => $data['label'],
+    'bundle' => $data['bundle'],
+    'description' => $data['description'],
+    'required' => $data['required'],
+    'settings' => array(
+      'user_register_form' => NULL,
+    ),
+    'widget' => array(
+      'active' => !isset($data['widget']['active']) ? 1 : $data['widget']['active'],
+      'settings' => array(),
+    ),
+
+    'display' => array(
+      'default' => array(
+        'label' => 'above',
+        'weight' => empty($data['display']['default']['weight']) ? 0 : $data['display']['default']['weight'],
+        'settings' => array(
+          'edit' => array(
+            'editor' => empty($data['diplasy']['default']['settings']['edit']['editor']) ? 'form' : $data['diplasy']['default']['settings']['edit']['editor'],
+          ),
+        ),
+      ),
+      'teaser' => array(
+        'label' => 'above',
+        'type' => 'hidden',
+        'weight' => 0,
+        'settings' => array(),
+      ),
+    ),
+  );
+
+  if ($data['type'] == 'image') {
+    $instance['settings']['file_directory'] = $data['file_directory'];
+    $instance['settings']['file_extensions'] = $data['file_extensions'];
+    $instance['settings']['max_filesize'] = '1 MB';
+    $instance['settings']['max_resolution'] = NULL;
+    $instance['settings']['min_resolution'] = NULL;
+    $instance['settings']['alt_field'] = 1;
+    $instance['settings']['title_field'] = 1;
+    $instance['settings']['default_image'] = 0;
+    $instance['widget']['type'] = 'image_image';
+    $instance['widget']['module'] = 'image';
+    $instance['widget']['settings'] = array(
+      'progress_indicator' => 'throbber',
+      'preview_image_style' => 'thumbnail',
+    );
+    $instance['display']['default']['type'] = 'image';
+    $instance['display']['default']['module'] = 'image';
+    $instance['display']['default']['settings']['image_style'] = 'thumbnail';
+    $instance['display']['default']['settings']['image_link'] = 'file';
+  }
+  elseif (preg_match('/^list/', $data['type'])) {
+    $instance['widget']['type'] = 'options_buttons';
+    $instance['widget']['module'] = 'options';
+    $instance['display']['default']['type'] = 'list_default';
+    $instance['display']['default']['module'] = 'list';
+  }
+  elseif ($data['type'] == 'date') {
+    $instance['settings']['default_value'] = 'strtotime';
+    $instance['settings']['default_value_code'] = $data['default_value_code'];
+    $instance['settings']['default_value2'] = 'same';
+    $instance['settings']['default_value_code2'] = NULL;
+    $instance['settings']['user_register_form'] = NULL;
+    $instance['widget']['type'] = 'date_popup';
+    $instance['widget']['module'] = 'date';
+    $instance['widget']['settings']['input_format'] = 'Y-m-d H:i:s';
+    $instance['widget']['settings']['input_format_custom'] = NULL;
+    $instance['widget']['settings']['year_range'] = $data['widget']['settings']['year_range'];
+    $instance['widget']['settings']['increment'] = 15;
+    $instance['widget']['settings']['label_position'] = 'none';
+    $instance['widget']['settings']['text_parts'] = array();
+    $instance['widget']['settings']['no_fieldset'] = 0;
+    $instance['display']['default']['type'] = 'date_default';
+    $instance['display']['default']['module'] = 'image';
+    $instance['display']['default']['settings']['format_type'] = 'long';
+    $instance['display']['default']['settings']['multiple_number'] = NULL;
+    $instance['display']['default']['settings']['multiple_from'] = NULL;
+    $instance['display']['default']['settings']['multiple_to'] = NULL;
+    $instance['display']['default']['settings']['fromto'] = 'both';
+    $instance['display']['default']['settings']['show_remaining_days'] = NULL;
+  }
+  elseif(in_array($data['type'], array('email', 'text'))) {
+    $instance['settings']['text_processing'] = 0;
+    $instance['settings']['user_register_form'] = NULL;
+    $instance['widget']['type'] = 'text_textfield';
+    $instance['widget']['module'] = 'text';
+    $instance['widget']['settings']['size'] = $data['widget']['settings']['size'];
+    $instance['display']['default']['type'] = 'text_default';
+    $instance['display']['default']['module'] = 'text';
+  }
+  elseif($data['type'] == 'entityreference') {
+    $instance['widget']['type'] = 'entityreference_autocomplete';
+    $instance['widget']['module'] = 'entityreference';
+    $instance['display']['default']['type'] = 'entityreference_label';
+    $instance['display']['default']['module'] = 'entityreference';
+    $instance['display']['default']['settings']['link'] = NULL;
+  }
+  elseif($data['type'] == 'file') {
+    $instance['settings']['file_directory'] = $data['file_directory'];
+    $instance['settings']['file_extensions'] = $data['file_extensions'];
+    $instance['settings']['max_filesize'] = '5 MB';
+    $instance['settings']['description_field'] = 1;
+    $instance['settings']['user_register_form'] = NULL;
+    $instance['widget']['type'] = 'file_generic';
+    $instance['widget']['module'] = 'file';
+    $instance['widget']['active'] = 1;
+    $instance['widget']['settings'] = array(
+      'progress_indicator' => 'throbber',
+    );
+    $instance['display']['default']['type'] = 'file_dafault';
+    $instance['display']['default']['module'] = 'file';
+  }
+  elseif($data['type'] == 'number_integer') {
+    $instance['settings']['min'] = NULL;
+    $instance['settings']['max'] = NULL;
+    $instance['settings']['prefix'] = NULL;
+    $instance['settings']['suffix'] = NULL;
+    $instance['widget']['type'] = 'number';
+    $instance['widget']['module'] = 'number';
+    $instance['widget']['active'] = 0;
+    $instance['display']['default']['type'] = 'number_integer';
+    $instance['display']['default']['module'] = 'number';
+    $instance['display']['default']['settings']['thousand_separator'] = '.';
+    $instance['display']['default']['settings']['decimal_separator'] = ',';
+    $instance['display']['default']['settings']['scale'] = 0;
+    $instance['display']['default']['settings']['prefix_suffix'] = 1;
+  }
+  elseif($data['type'] == 'number_decimal') {
+    $instance['settings']['min'] = NULL;
+    $instance['settings']['max'] = NULL;
+    $instance['settings']['prefix'] = NULL;
+    $instance['settings']['suffix'] = NULL;
+    $instance['widget']['type'] = 'number';
+    $instance['widget']['module'] = 'number';
+    $instance['widget']['active'] = 0;
+    $instance['display']['default']['type'] = 'number_decimal';
+    $instance['display']['default']['module'] = 'number';
+    $instance['display']['default']['settings']['thousand_separator'] = '.';
+    $instance['display']['default']['settings']['decimal_separator'] = ',';
+    $instance['display']['default']['settings']['scale'] = 0;
+    $instance['display']['default']['settings']['prefix_suffix'] = 1;
+  }
+  elseif($data['type'] == 'text_long') {
+    $instance['widget']['type'] = 'text_textarea';
+    $instance['widget']['module'] = 'text';
+    $instance['widget']['settings']['rows'] = 3;
+    $instance['display']['default']['type'] = 'text_default';
+    $instance['display']['default']['module'] = 'text';
+  }
+  field_create_instance($instance);
+  $instance = field_read_instance('node', $data['field_name'], $data['bundle']);
+  $instance['widget']['weight'] = empty($data['widget']['weight']) ? 0 : $data['widget']['weight'];
+  field_update_instance($instance);
+  unset ($instance, $ctypenames);
+}

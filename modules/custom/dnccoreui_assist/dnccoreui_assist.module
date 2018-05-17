@@ -1,0 +1,133 @@
+<?php
+
+/*
+ * Copyright (C) 2018 denic
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+ * @file
+ * Frequently used general functions
+ *
+ * Handle all main function of the system that used by
+ * another module together with it's own function
+ * Just think like sharing any function that generally
+ * frequently used
+ */
+
+/**
+ * Implementation of hook_load
+ * @return arg
+ **/
+function dnccoreui_assist_load($arg) {
+  return check_plain($arg);
+}
+
+/**
+ * Implementation of hook_menu
+ *
+ * @return array
+ */
+function dnccoreui_assist_menu() {
+  $items = array();
+  $items['dnccoreui/examples/%dnccoreui_assist'] = array(
+    'title' => 'Example',
+    'description' => 'Example UI of CoreUI theme',
+    'access callback' => TRUE,
+    'page callback' => 'dnccoreui_assist_display_example',
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+function dnccoreui_assist_get_page_path($page = NULL) {
+  $paths = [];
+  $paths['typography'] = path_to_theme() . '/views/typography.html';
+  $paths['font-awesome'] = path_to_theme() . '/views/icons/font-awesome.html';
+  $paths['simple-line-icons'] = path_to_theme() . '/views/icons/simple-line-icons.html';
+  $paths['buttons'] = path_to_theme() . '/views/components/buttons.html';
+  $paths['cards'] = path_to_theme() . '/views/components/cards.html';
+  $paths['forms'] = path_to_theme() . '/views/components/forms.html';
+  $paths['modals'] = path_to_theme() . '/views/components/modals.html';
+  $paths['social-buttons'] = path_to_theme() . '/views/components/social-buttons.html';
+  $paths['switches'] = path_to_theme() . '/views/components/switches.html';
+  $paths['tables'] = path_to_theme() . '/views/components/tables.html';
+  $paths['tabs'] = path_to_theme() . '/views/components/tabs.html';
+  $paths['charts'] = path_to_theme() . '/views/charts.html';
+  $paths['widgets'] = path_to_theme() . '/views/widgets.html';
+  $paths['dashboard'] = path_to_theme() . '/views/main.html';
+  return empty($page) ? $paths : (empty($paths[$page]) ? NULL : $paths[$page]);
+}
+
+function dnccoreui_assist_display_example($page) {
+  if ($GLOBALS['theme'] != 'dnccoreui') {
+    drupal_set_message(t('No example in active theme'), 'error', FALSE);
+    return;
+  }
+  $path = dnccoreui_assist_get_page_path($page);
+  if (empty($path)) {
+    unset ($path);
+    drupal_set_message(t('No example by your request'), 'error', FALSE);
+    return;
+  }
+  $path = drupal_realpath($path);
+  // echo $path; exit;
+  if (!is_file($path)) {
+    unset ($path);
+    drupal_set_message(t('No example in active theme'), 'error', FALSE);
+    return;
+  }
+
+  $pagetitle = drupal_get_title();
+  $pagetitle .= ' ' . ucwords(strtolower($page));
+  drupal_set_title($pagetitle, 'PASS_TROUGH');
+  unset ($pagetitle);
+
+  if ($page == 'charts') {
+    drupal_add_js(base_path() . path_to_theme() . '/js/views/charts.js', array(
+      'scope' => 'footer',
+      'weight' => 100,
+    ));
+  }
+  if ($page == 'widgets') {
+    drupal_add_js(base_path() . path_to_theme() . '/js/views/widgets.js', array(
+      'scope' => 'footer',
+      'weight' => 100,
+    ));
+  }
+
+  $output = [];
+  $handle = fopen($path, 'r');
+  while(!feof($handle)) {
+    $buffer = fgets($handle);
+    if (preg_match('~<img ~', $buffer)) {
+      libxml_use_internal_errors(true);
+      $dom = new domdocument;
+      $dom->loadHTML($buffer);
+      foreach ($dom->getElementsByTagName('img') as $a) {
+        $src = $a->getAttribute('src');
+        $buffer = preg_replace('~src="' . $src . '"~', 'src="' . base_path() . path_to_theme() . '/' . $src . '"', $buffer);
+      }
+      unset ($dom);
+    }
+    $output[] = $buffer;
+    unset ($buffer);
+  }
+  unset ($handle);
+
+  return implode("\n", $output);
+}
